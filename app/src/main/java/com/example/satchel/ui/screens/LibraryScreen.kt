@@ -13,10 +13,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import com.example.satchel.Prefs
+import com.example.satchel.ui.CompactDocumentRow
+import com.example.satchel.ui.DocLayout
+import com.example.satchel.ui.DocumentTile
+import com.example.satchel.ui.LayoutMenu
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -71,7 +82,19 @@ import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
 
 /** Browsing and search share one screen: with a query, results are ranked by content; without, they are listed. */
-class LibraryViewModel(private val api: ApiClient, private val cache: HierarchyCache) : ViewModel() {
+class LibraryViewModel(
+    private val api: ApiClient,
+    private val cache: HierarchyCache,
+    private val prefs: Prefs,
+) : ViewModel() {
+    var layout by mutableStateOf(DocLayout.from(prefs.libraryLayout))
+        private set
+
+    fun changeLayout(new: DocLayout) {
+        layout = new
+        prefs.libraryLayout = new.name
+    }
+
     var hierarchy by mutableStateOf<Hierarchy?>(null)
         private set
     var filters by mutableStateOf(Filters())
@@ -201,9 +224,9 @@ class LibraryViewModel(private val api: ApiClient, private val cache: HierarchyC
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
-    val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy) }
+    val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy, it.prefs) }
     val focus = LocalFocusManager.current
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val hierarchy = vm.hierarchy
 
     // Browsing loads page after page as you scroll; search returns its best matches at once.
@@ -240,44 +263,68 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
             when {
                 vm.loading -> Loading()
                 vm.error != null && hierarchy == null -> EmptyState(vm.error!!, actionLabel = "Try again", onAction = vm::retry)
-                else -> LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    vm.error?.let { item { Notice(it, kind = "error") } }
-                    if (vm.query.isEmpty() && vm.filters.courseId == null && hierarchy != null) {
-                        val courses = hierarchy.programmes
-                            .filter { vm.filters.programmeId == null || it.id == vm.filters.programmeId }
-                            .flatMap { it.courses }
-                        if (courses.isNotEmpty()) item {
-                            CourseStrip(courses) { vm.updateFilters(vm.filters.copy(courseId = it)) }
-                        }
-                    }
-                    item { ListHeading(vm, hierarchy) }
+                else -> DocumentGrid(vm, hierarchy, listState, onOpenDocument)
+            }
+        }
+    }
+}
 
-                    if (vm.query.isNotEmpty()) {
-                        val r = vm.results
-                        if (r != null && r.results.isEmpty()) item {
-                            EmptyHint("No documents match “${r.query}”. Try different words or fewer filters.")
-                        }
-                        items(r?.results.orEmpty(), key = { it.document.id }) { hit ->
-                            DocumentRow(hit.document, onClick = { onOpenDocument(hit.document.id) }, score = hit.score)
-                        }
-                    } else {
-                        if (vm.items.isEmpty()) item {
-                            EmptyHint(if (vm.filters.isEmpty) "Nothing here yet." else "No documents match these filters.")
-                        }
-                        items(vm.items, key = { it.id }) { doc ->
-                            DocumentRow(doc, onClick = { onOpenDocument(doc.id) })
-                        }
-                        if (vm.loadingMore) item {
-                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(Modifier.size(28.dp))
-                            }
-                        }
-                    }
+/**
+ * One grid for every layout: in Grid, documents share rows (two on a phone, more
+ * on a tablet); in Cards and Compact, and for headings, an item spans the full row.
+ */
+@Composable
+private fun DocumentGrid(
+    vm: LibraryViewModel,
+    hierarchy: Hierarchy?,
+    state: LazyGridState,
+    onOpenDocument: (Int) -> Unit,
+) {
+    val layout = vm.layout
+    val full: LazyGridItemSpanScope.(Any?) -> GridItemSpan = { GridItemSpan(maxLineSpan) }
+    val docSpan: (LazyGridItemSpanScope.(Any?) -> GridItemSpan)? = if (layout == DocLayout.Grid) null else full
+    val wide: LazyGridScope.(@Composable () -> Unit) -> Unit = { content -> item(span = { GridItemSpan(maxLineSpan) }) { content() } }
+
+    @Composable
+    fun Doc(doc: Document, score: Double?) = when (layout) {
+        DocLayout.Cards -> DocumentRow(doc, onClick = { onOpenDocument(doc.id) }, score = score)
+        DocLayout.Compact -> CompactDocumentRow(doc, onClick = { onOpenDocument(doc.id) }, score = score)
+        DocLayout.Grid -> DocumentTile(doc, onClick = { onOpenDocument(doc.id) }, score = score)
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 150.dp),
+        state = state,
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (layout == DocLayout.Compact) 0.dp else 10.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        vm.error?.let { wide { Notice(it, kind = "error") } }
+        if (vm.query.isEmpty() && vm.filters.courseId == null && hierarchy != null) {
+            val courses = hierarchy.programmes
+                .filter { vm.filters.programmeId == null || it.id == vm.filters.programmeId }
+                .flatMap { it.courses }
+            if (courses.isNotEmpty()) wide {
+                CourseStrip(courses) { vm.updateFilters(vm.filters.copy(courseId = it)) }
+            }
+        }
+        wide { ListHeading(vm, hierarchy) }
+
+        if (vm.query.isNotEmpty()) {
+            val r = vm.results
+            if (r != null && r.results.isEmpty()) wide {
+                EmptyHint("No documents match “${r.query}”. Try different words or fewer filters.")
+            }
+            items(r?.results.orEmpty(), key = { it.document.id }, span = docSpan) { hit -> Doc(hit.document, hit.score) }
+        } else {
+            if (vm.items.isEmpty()) wide {
+                EmptyHint(if (vm.filters.isEmpty) "Nothing here yet." else "No documents match these filters.")
+            }
+            items(vm.items, key = { it.id }, span = docSpan) { doc -> Doc(doc, null) }
+            if (vm.loadingMore) wide {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(28.dp))
                 }
             }
         }
@@ -288,15 +335,20 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
 private fun ListHeading(vm: LibraryViewModel, hierarchy: Hierarchy?) {
     val course = hierarchy?.courses?.find { it.id == vm.filters.courseId }
     val r = vm.results
-    Column {
-        Text(
-            when {
-                vm.query.isNotEmpty() -> "Search results"
-                course != null -> course.name
-                else -> "All documents"
-            },
-            style = MaterialTheme.typography.titleLarge,
-        )
+    Column(Modifier.padding(bottom = if (vm.layout == DocLayout.Compact) 4.dp else 0.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                when {
+                    vm.query.isNotEmpty() -> "Search results"
+                    course != null -> course.name
+                    else -> "All documents"
+                },
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            LayoutMenu(vm.layout, vm::changeLayout)
+        }
         val subtitle = if (vm.query.isNotEmpty()) {
             r?.let {
                 plural(it.results.size, "result") + " for “${it.query}”" +

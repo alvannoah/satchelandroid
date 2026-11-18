@@ -21,6 +21,7 @@ class AppContainer(context: Context) {
     val session = Session(SecureStore(context), scope)
     val api = ApiClient(BuildConfig.API_URL, token = { session.token }, onUnauthorized = session::expired)
     val hierarchy = HierarchyCache(api)
+    val prefs = Prefs(context)
 
     /** Downloaded files, which the FileProvider (res/xml/file_paths.xml) shares with viewer apps. */
     val documentsDir = File(context.cacheDir, "documents")
@@ -28,6 +29,15 @@ class AppContainer(context: Context) {
     init {
         session.api = api
     }
+}
+
+/** Display choices remembered on this phone. */
+class Prefs(context: Context) {
+    private val prefs = context.getSharedPreferences("satchel.prefs", Context.MODE_PRIVATE)
+
+    var libraryLayout: String?
+        get() = prefs.getString("library.layout", null)
+        set(value) = prefs.edit().putString("library.layout", value).apply()
 }
 
 /** The course hierarchy changes rarely; fetch it once and reuse it across screens. */

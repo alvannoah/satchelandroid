@@ -54,14 +54,17 @@ data class SatchelColors(
     val docx: Color,
     val pptx: Color,
     val otherFile: Color,
+    val paper: Color,
+    val paperLine: Color,
 )
 
-internal val LightExtra = SatchelColors(
+val LightExtra = SatchelColors(
     official = Color(0xFF146C2E), officialBg = Color(0xFFC4EED0),
     community = Color(0xFF8A5300), communityBg = Color(0xFFFFE0B2),
     warn = Color(0xFF7A5900), warnBg = Color(0xFFFEF7E0),
     ok = Color(0xFF146C2E), okBg = Color(0xFFE6F4EA),
     pdf = Color(0xFFD93025), docx = Color(0xFF1A73E8), pptx = Color(0xFFE37400), otherFile = Color(0xFF5E6368),
+    paper = Color(0xFFFFFFFF), paperLine = Color(0xFFE3E6EA),
 )
 
 internal val DarkExtra = SatchelColors(
@@ -70,4 +73,5 @@ internal val DarkExtra = SatchelColors(
     warn = Color(0xFFF6D868), warnBg = Color(0xFF3D3000),
     ok = Color(0xFF6DD58C), okBg = Color(0xFF0F5223),
     pdf = Color(0xFFF28B82), docx = Color(0xFF8AB4F8), pptx = Color(0xFFFDD663), otherFile = Color(0xFFA8ABAF),
+    paper = Color(0xFFF1F3F4), paperLine = Color(0xFFD5D8DC),
 )

@@ -50,3 +50,12 @@ private val academicYear = Regex("""^(\d{4})/(\d{4})$""")
 /** Like the API's check: "2025/2026", the second year following the first. */
 fun isAcademicYear(text: String): Boolean =
     academicYear.matchEntire(text)?.destructured?.let { (a, b) -> b.toInt() == a.toInt() + 1 } ?: false
+
+/** Stable pseudo-random widths (55 to 99%) for the lines on a drawn page, so each document looks a little different. */
+fun lineWidths(seed: Int, count: Int): List<Float> {
+    var x = (seed.toLong() * 2654435761L) and 0xFFFFFFFFL
+    return List(count) {
+        x = (x * 1103515245L + 12345L) and 0xFFFFFFFFL
+        (55 + x % 45) / 100f
+    }
+}
