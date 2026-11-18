@@ -138,9 +138,29 @@ class ApiClient(
         return decode(send(Request.Builder().url(url("documents")).post(form)))
     }
 
-    /** Saves a document's file to [target], replacing any earlier copy. */
-    suspend fun download(id: Int, target: File) {
-        val request = authorised(Request.Builder().url(url("documents/$id/file"))).build()
+    /** Saves a document's original file to [target], replacing any earlier copy. */
+    suspend fun download(id: Int, target: File) = save("documents/$id/file", target)
+
+    /**
+     * Saves the document's PDF copy for reading on screen to [target]. 409: still
+     * being made; 415: it could not be made (read the original instead).
+     */
+    suspend fun downloadView(id: Int, target: File) = save("documents/$id/view", target)
+
+    // ------------------------------- reading ------------------------------ //
+
+    /** Records the page on screen; the server keeps the furthest page reached. */
+    suspend fun saveProgress(id: Int, page: Int): Progress {
+        val body = buildJsonObject { put("page", page) }
+        return decode(send(Request.Builder().url(url("documents/$id/progress")).put(body.toBody())))
+    }
+
+    /** "Continue reading": status "in_progress", "completed" or "all", most recent first. */
+    suspend fun reading(status: String = "in_progress", limit: Int = 20): List<ReadingItem> =
+        get(url("reading", "status" to status, "limit" to "$limit"))
+
+    private suspend fun save(path: String, target: File) {
+        val request = authorised(Request.Builder().url(url(path))).build()
         val response = execute(request)
         withContext(Dispatchers.IO) {
             response.use {

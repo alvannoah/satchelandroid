@@ -28,6 +28,8 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -112,6 +114,12 @@ class DocumentViewModel(private val id: Int, private val api: ApiClient, private
         }
     }
 
+    /** After reading: fetch the page again for the new progress, keeping what is shown meanwhile. */
+    fun refresh() {
+        if (detail == null) return
+        viewModelScope.launch { runCatching { api.document(id) }.onSuccess { detail = it } }
+    }
+
     fun open(doc: Document) {
         if (downloading) return
         downloading = true
@@ -139,6 +147,13 @@ fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> 
             vm.readyToOpen = null
             vm.downloadError = openExternally(context, container.files.shareableUri(file), file.name)
         }
+    }
+
+    // Coming back from the viewer: show the progress just made.
+    var shownBefore by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (shownBefore) vm.refresh()
+        shownBefore = true
     }
 
     val detail = vm.detail
@@ -190,9 +205,17 @@ private fun DocumentContent(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 // Read inside Satchel; files it cannot show are opened in another app instead.
-                if (kind != FileKind.Other) {
+                val progress = detail.progress
+                if (kind != FileKind.Other || doc.viewable) {
                     Button(onClick = { onView(doc.id, doc.title) }, modifier = Modifier.weight(1f)) {
-                        Text("View ${kind.label}")
+                        Text(
+                            when {
+                                progress != null && !progress.completed -> "Continue · page ${progress.lastPage}"
+                                progress != null -> "Read again"
+                                else -> "View ${kind.label}"
+                            },
+                            maxLines = 1,
+                        )
                     }
                 } else {
                     Button(onClick = { vm.open(doc) }, enabled = !vm.downloading, modifier = Modifier.weight(1f)) {
@@ -233,6 +256,18 @@ private fun DocumentContent(
                 }
             }
             vm.downloadError?.let { Notice(it, kind = "error", modifier = Modifier.padding(top = 8.dp)) }
+        }
+        detail.progress?.let { p ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        if (p.completed) "You have read all ${p.pageCount} pages."
+                        else "You have read ${p.percent}% · page ${p.furthestPage} of ${p.pageCount}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    LinearProgressIndicator(progress = { p.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                }
+            }
         }
         item { Details(doc) }
 

@@ -156,7 +156,7 @@ fun DownloadsScreen(onView: (Int, String) -> Unit) {
                         Text(
                             if (downloads.isEmpty()) "Documents you download can be read here without internet."
                             else "${plural(downloads.size, "document")} · " +
-                                "${formatSize(downloads.sumOf { it.file.length() })} on this phone · readable offline",
+                                "${formatSize(downloads.sumOf { it.sizeBytes })} on this phone · readable offline",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -42,6 +42,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -67,6 +68,7 @@ import com.example.satchel.data.Document
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.data.OfficeText
 import com.example.satchel.data.PdfPages
+import com.example.satchel.data.ReadingSync
 import com.example.satchel.ui.EmptyState
 import com.example.satchel.ui.FileKind
 import com.example.satchel.ui.Loading
@@ -79,11 +81,19 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 sealed interface ViewerContent {
-    class Pdf(val pages: PdfPages) : ViewerContent
-    class Text(val sections: List<OfficeText.Section>, val kind: FileKind) : ViewerContent
+    /** Pages; [tracked] when they are the server's page copy, whose progress the server records. */
+    class Pdf(val pages: PdfPages, val startPage: Int, val tracked: Boolean) : ViewerContent
+
+    /** The text of a Word or PowerPoint file, when there is no page copy. [why] says why not. */
+    class Text(val sections: List<OfficeText.Section>, val kind: FileKind, val why: String?) : ViewerContent
 }
 
-class ViewerViewModel(private val id: Int, private val api: ApiClient, private val files: DocumentFiles) : ViewModel() {
+class ViewerViewModel(
+    private val id: Int,
+    private val api: ApiClient,
+    private val files: DocumentFiles,
+    private val reading: ReadingSync,
+) : ViewModel() {
     var document by mutableStateOf<Document?>(null)
         private set
     var file by mutableStateOf<File?>(null)
@@ -101,19 +111,54 @@ class ViewerViewModel(private val id: Int, private val api: ApiClient, private v
 
     fun load() {
         error = null
+        reading.flush()
         viewModelScope.launch {
             try {
-                // A downloaded document opens without the server.
-                val doc = document ?: files.downloaded(id)?.document ?: api.document(id, related = 0).document
+                // The server has the latest details and progress; a downloaded document
+                // opens without it.
+                val downloaded = files.downloaded(id)
+                val detail = try {
+                    api.document(id, related = 0)
+                } catch (e: ApiException) {
+                    if (downloaded == null || e.status != 0) throw e
+                    null
+                }
+                val doc = detail?.document ?: downloaded!!.document
                 document = doc
                 stage = "Downloading…"
+
+                // 1. The server's page copy: every format, as it looks.
+                var why: String? = null
+                if (doc.viewable || downloaded?.view != null) {
+                    try {
+                        val view = files.fetchView(doc)
+                        stage = "Preparing…"
+                        val pages = withContext(Dispatchers.IO) { PdfPages(view) }
+                        // Resume: a page read here but not yet sent, else the server's, else this phone's.
+                        val start = reading.pendingPage(id) ?: detail?.progress?.lastPage ?: reading.localPage(id) ?: 1
+                        content = ViewerContent.Pdf(pages, start.coerceIn(1, maxOf(1, pages.pageCount)), tracked = true)
+                        file = runCatching { files.fetch(doc) }.getOrNull()
+                        return@launch
+                    } catch (e: ApiException) {
+                        when (e.status) {
+                            409 -> why = "A page-by-page version is still being prepared, so this shows the text for now."
+                            415 -> why = null
+                            else -> if (e.status != 0) throw e
+                        }
+                    }
+                }
+
+                // 2. The original: PDFs as pages, Word and PowerPoint as their text.
                 val f = files.fetch(doc).also { file = it }
                 stage = "Preparing…"
                 content = withContext(Dispatchers.IO) {
                     when (val kind = FileKind.of(doc.originalFilename)) {
-                        FileKind.Pdf -> ViewerContent.Pdf(PdfPages(f))
-                        FileKind.Pptx -> ViewerContent.Text(OfficeText.pptx(f), kind)
-                        FileKind.Docx -> ViewerContent.Text(OfficeText.docx(f), kind)
+                        FileKind.Pdf -> PdfPages(f).let { pages ->
+                            ViewerContent.Pdf(pages, (reading.localPage(id) ?: 1).coerceIn(1, maxOf(1, pages.pageCount)),
+                                tracked = false)
+                        }
+                        FileKind.Pptx -> ViewerContent.Text(OfficeText.pptx(f), kind, why)
+                        FileKind.Docx -> ViewerContent.Text(OfficeText.docx(f), kind, why)
                         FileKind.Other -> null
                     }
                 }
@@ -127,6 +172,11 @@ class ViewerViewModel(private val id: Int, private val api: ApiClient, private v
         }
     }
 
+    /** The page on screen (1-based): remembered on the phone, and sent to the server for page copies. */
+    fun onPage(page: Int, tracked: Boolean) {
+        if (tracked) reading.record(id, page) else reading.rememberLocally(id, page)
+    }
+
     override fun onCleared() {
         (content as? ViewerContent.Pdf)?.pages?.close()
     }
@@ -134,7 +184,7 @@ class ViewerViewModel(private val id: Int, private val api: ApiClient, private v
 
 @Composable
 fun ViewerScreen(documentId: Int) {
-    val vm = screenViewModel { ViewerViewModel(documentId, it.api, it.files) }
+    val vm = screenViewModel { ViewerViewModel(documentId, it.api, it.files, it.reading) }
     val context = LocalContext.current
     var externalError by remember { mutableStateOf<String?>(null) }
     val openElsewhere: (() -> Unit)? = vm.file?.let { f ->
@@ -152,7 +202,7 @@ fun ViewerScreen(documentId: Int) {
                     actionLabel = if (openElsewhere != null) "Open in another app" else "Try again",
                     onAction = openElsewhere ?: vm::load,
                 )
-                content is ViewerContent.Pdf -> PdfViewer(content.pages, openElsewhere)
+                content is ViewerContent.Pdf -> PdfViewer(content, openElsewhere) { vm.onPage(it, content.tracked) }
                 content is ViewerContent.Text -> TextViewer(content, openElsewhere)
                 else -> Loading(message = vm.stage)
             }
@@ -163,12 +213,17 @@ fun ViewerScreen(documentId: Int) {
 // ---------------------------------- PDF ----------------------------------- //
 
 @Composable
-private fun PdfViewer(pages: PdfPages, openElsewhere: (() -> Unit)?) {
+private fun PdfViewer(content: ViewerContent.Pdf, openElsewhere: (() -> Unit)?, onPage: (Int) -> Unit) {
+    val pages = content.pages
     if (pages.pageCount == 0) {
         EmptyState("This PDF has no pages.")
         return
     }
-    val pager = rememberPagerState { pages.pageCount }
+    val pager = rememberPagerState(initialPage = content.startPage - 1) { pages.pageCount }
+    // Record the page once the reader settles on it (not every page swiped past).
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.settledPage }.collect { onPage(it + 1) }
+    }
     val scope = rememberCoroutineScope()
     // Draw pages at twice the screen width (at most 2048 px), so zooming in stays sharp.
     val screenWidth = LocalWindowInfo.current.containerSize.width
@@ -297,8 +352,8 @@ private fun TextViewer(content: ViewerContent.Text, openElsewhere: (() -> Unit)?
         item {
             Column {
                 Notice(
-                    (if (slides) "The slides’ text, in order." else "The document’s text.") +
-                        " Pictures and layout aren’t shown here; open the original to see them.",
+                    content.why ?: ((if (slides) "The slides’ text, in order." else "The document’s text.") +
+                        " Pictures and layout aren’t shown here; open the original to see them."),
                 )
                 if (openElsewhere != null) {
                     TextButton(onClick = openElsewhere) { Text("Open the original in another app") }

@@ -5,6 +5,7 @@ import android.content.Context
 import com.example.satchel.data.ApiClient
 import com.example.satchel.data.AuthState
 import com.example.satchel.data.DocumentFiles
+import com.example.satchel.data.ReadingSync
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SecureStore
 import com.example.satchel.data.Session
@@ -25,10 +26,12 @@ class AppContainer(context: Context) {
     val prefs = Prefs(context)
 
     val files = DocumentFiles(context, api)
+    val reading = ReadingSync(context, api, scope)
 
     init {
         session.api = api
         files.owner = { (session.state.value as? AuthState.LoggedIn)?.user?.id }
+        reading.owner = files.owner
     }
 }
 

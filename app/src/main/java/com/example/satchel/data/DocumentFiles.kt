@@ -15,8 +15,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
-/** A downloaded document: its details and its file, readable without the server. */
-data class Download(val document: Document, val file: File, val savedAt: Long)
+/** A downloaded document: its details, its file and (if the server made one) its PDF copy. */
+data class Download(val document: Document, val file: File, val view: File?, val savedAt: Long) {
+    val sizeBytes: Long get() = file.length() + (view?.length() ?: 0)
+}
 
 /**
  * Documents' files on the phone, in three places:
@@ -31,6 +33,7 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
 
     private companion object {
         const val META = "document.json"
+        const val VIEW = "view.pdf"   // the server's PDF copy for reading on screen
     }
 
     /** The signed-in account's id, set by AppContainer; downloads are kept per account. */
@@ -52,7 +55,7 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
                 val doc = runCatching { SatchelJson.decodeFromString<Document>(meta.readText()) }.getOrNull()
                     ?: return@mapNotNull null
                 val file = File(dir, fileName(doc)).takeIf { it.exists() } ?: return@mapNotNull null
-                Download(doc, file, meta.lastModified())
+                Download(doc, file, File(dir, VIEW).takeIf { it.exists() }, meta.lastModified())
             }.sortedByDescending { it.savedAt }
         }
     }
@@ -63,6 +66,9 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
     suspend fun download(doc: Document) {
         if (downloaded(doc.id) != null) return
         val source = fetch(doc)
+        // The PDF copy too, so offline reading shows the real pages. Optional: without it
+        // (not made yet, or an older server) the viewer falls back to the original.
+        val view = if (doc.viewable) runCatching { fetchView(doc) }.getOrNull() else null
         val root = downloadsDir() ?: throw ApiException(401, "Sign in to download documents.")
         withContext(Dispatchers.IO) {
             val dir = File(root, "${doc.id}").apply { mkdirs() }
@@ -71,6 +77,7 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
             try {
                 source.copyTo(partial, overwrite = true)
                 if (!partial.renameTo(target)) throw IOException("rename failed")
+                view?.copyTo(File(dir, VIEW), overwrite = true)
                 // Written last: a folder without it is an unfinished download and is ignored.
                 File(dir, META).writeText(SatchelJson.encodeToString(Document.serializer(), doc))
             } catch (e: IOException) {
@@ -101,6 +108,14 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
         downloaded(doc.id)?.file?.let { return it }
         val target = File(cache, "${doc.id}/${fileName(doc)}")
         if (!(target.exists() && target.length() == doc.sizeBytes)) api.download(doc.id, target)
+        return target
+    }
+
+    /** The document's PDF copy for reading on screen: downloaded, cached, or fetched from the server. */
+    suspend fun fetchView(doc: Document): File {
+        downloaded(doc.id)?.view?.let { return it }
+        val target = File(cache, "${doc.id}/$VIEW")
+        if (!target.exists()) api.downloadView(doc.id, target)
         return target
     }
 

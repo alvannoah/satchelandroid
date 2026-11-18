@@ -95,6 +95,7 @@ import com.example.satchel.data.Document
 import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SearchResults
+import com.example.satchel.data.ReadingItem
 import com.example.satchel.ui.DocumentRow
 import com.example.satchel.ui.EmptyState
 import com.example.satchel.ui.Loading
@@ -210,6 +211,15 @@ class LibraryViewModel(
 
     var items by mutableStateOf<List<Document>>(emptyList())
         private set
+
+    /** "Continue reading": documents started and not finished, most recent first. */
+    var reading by mutableStateOf<List<ReadingItem>>(emptyList())
+        private set
+
+    /** Optional: older servers have no reading list, and offline it is simply absent. */
+    fun loadReading() {
+        viewModelScope.launch { runCatching { api.reading("in_progress", 10) }.onSuccess { reading = it } }
+    }
     var total by mutableStateOf(0)
         private set
     var results by mutableStateOf<SearchResults?>(null)
@@ -229,6 +239,7 @@ class LibraryViewModel(
 
     init {
         load()
+        loadReading()
     }
 
     private fun load(refreshHierarchy: Boolean = false) {
@@ -315,6 +326,7 @@ class LibraryViewModel(
     fun refresh() {
         refreshing = true
         load(refreshHierarchy = true)
+        loadReading()
     }
 
     fun retry() = reload()
@@ -326,7 +338,7 @@ class LibraryViewModel(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
+fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) {
     val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy, it.prefs, it.files) }
     val focus = LocalFocusManager.current
     val listState = rememberLazyGridState()
@@ -340,6 +352,13 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
         }
     }
     LaunchedEffect(nearEnd, vm.items.size) { if (nearEnd) vm.loadMore() }
+
+    // Back from reading: the "continue reading" strip may have changed.
+    var shownBefore by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (shownBefore) vm.loadReading()
+        shownBefore = true
+    }
 
     // Back leaves selection mode before it leaves the screen.
     BackHandler(enabled = vm.selecting) { vm.clearSelection() }
@@ -396,7 +415,7 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
                     vm.error!! + "\n\nDocuments you downloaded can still be read in Downloads.",
                     actionLabel = "Try again", onAction = vm::retry,
                 )
-                else -> DocumentGrid(vm, hierarchy, listState, onOpenDocument)
+                else -> DocumentGrid(vm, hierarchy, listState, onOpenDocument, onView)
             }
         }
     }
@@ -434,6 +453,7 @@ private fun DocumentGrid(
     hierarchy: Hierarchy?,
     state: LazyGridState,
     onOpenDocument: (Int) -> Unit,
+    onView: (Int, String) -> Unit,
 ) {
     val layout = vm.layout
     val full: LazyGridItemSpanScope.(Any?) -> GridItemSpan = { GridItemSpan(maxLineSpan) }
@@ -462,6 +482,9 @@ private fun DocumentGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         vm.error?.let { wide { Notice(it, kind = "error") } }
+        if (vm.query.isEmpty() && vm.filters.isEmpty && vm.reading.isNotEmpty() && !vm.selecting) wide {
+            ContinueReading(vm.reading, onView)
+        }
         if (vm.query.isEmpty() && vm.filters.courseId == null && hierarchy != null) {
             val courses = hierarchy.programmes
                 .filter { vm.filters.programmeId == null || it.id == vm.filters.programmeId }
@@ -539,6 +562,33 @@ private fun EmptyHint(text: String) {
         text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(vertical = 32.dp),
     )
+}
+
+@Composable
+private fun ContinueReading(items: List<ReadingItem>, onView: (Int, String) -> Unit) {
+    Column {
+        Text("Continue reading", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(items, key = { it.document.id }) { item ->
+                val doc = item.document
+                val p = item.progress
+                Card(onClick = { onView(doc.id, doc.title) }, modifier = Modifier.width(220.dp)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(doc.course.code, style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary)
+                        Text(doc.title, style = MaterialTheme.typography.titleSmall, minLines = 2, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis)
+                        LinearProgressIndicator(progress = { p.percent / 100f },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                        Text("${p.percent}% · page ${p.lastPage} of ${p.pageCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

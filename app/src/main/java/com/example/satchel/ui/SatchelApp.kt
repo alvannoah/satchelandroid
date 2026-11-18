@@ -81,7 +81,10 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
             LoginScreen(state.message) { providerId -> onOpenBrowser(container.session.startSso(providerId)) }
         }
         is AuthState.LoggedIn -> {
-            LaunchedEffect(state.user.id) { container.files.loadDownloads() }
+            LaunchedEffect(state.user.id) {
+                container.files.loadDownloads()
+                container.reading.flush()   // pages read offline last time
+            }
             Main(state.user, navigator, onLogOut = { container.session.logOut() })
         }
     }
@@ -140,7 +143,8 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides entry) {
                     val open = { id: Int -> navigator.push(Route.Document(id)) }
                     when (val route = entry.route) {
-                        Route.Library -> LibraryScreen(onOpenDocument = open)
+                        Route.Library -> LibraryScreen(onOpenDocument = open,
+                            onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
                         is Route.Document -> DocumentScreen(route.id, onOpenDocument = open,
                             onOpenQuiz = { navigator.push(Route.Quiz(it)) },
                             onView = { id, title -> navigator.push(Route.Viewer(id, title)) })

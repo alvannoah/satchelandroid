@@ -75,6 +75,26 @@ class DecodingTest {
     }
 
     @Test
+    fun pageCopiesAndProgress() {
+        // Older servers send no "viewable": it means no page copy.
+        assertFalse(json.decodeFromString<DocumentDetail>(
+            """{"document": $document, "can_moderate": false, "duplicate_flags": [], "related": [], "copies_hidden": 0}""",
+        ).document.viewable)
+
+        val withCopy = document.replace("\"review_note\": null", "\"review_note\": null, \"viewable\": true, \"page_count\": 16")
+        val d = json.decodeFromString<DocumentDetail>("""
+            {"document": $withCopy, "can_moderate": false, "duplicate_flags": [], "related": [], "copies_hidden": 0,
+             "progress": {"document_id": 7, "last_page": 4, "furthest_page": 6, "page_count": 16, "percent": 38,
+                          "completed": false, "started_at": "2026-11-18T20:00:00", "updated_at": "2026-11-18T20:05:00",
+                          "completed_at": null}}
+        """)
+        assertTrue(d.document.viewable)
+        assertEquals(16, d.document.pageCount)
+        assertEquals(4, d.progress?.lastPage)
+        assertEquals(6, d.progress?.furthestPage)
+    }
+
+    @Test
     fun hierarchy() {
         val h = json.decodeFromString<Hierarchy>("""
             {"institution": "ISBAT", "mode": "institution",

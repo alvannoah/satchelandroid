@@ -53,7 +53,26 @@ data class Document(
     val uploader: PersonRef? = null,
     val reviewedAt: String? = null,
     val reviewNote: String? = null,
+    /** A PDF copy exists for reading on screen (GET /documents/{id}/view). False from servers without it. */
+    val viewable: Boolean = false,
+    val pageCount: Int? = null,
 )
+
+/** How far the signed-in person has read a document. Pages start at 1. */
+@Serializable
+data class Progress(
+    val documentId: Int,
+    val lastPage: Int,        // where to resume
+    val furthestPage: Int,    // only ever grows
+    val pageCount: Int,
+    val percent: Int,
+    val completed: Boolean,
+    val updatedAt: String? = null,
+)
+
+/** One entry in "continue reading". */
+@Serializable
+data class ReadingItem(val document: Document, val progress: Progress)
 
 // ------------------------------- browsing --------------------------------- //
 
@@ -115,6 +134,7 @@ data class DocumentDetail(
     val duplicateFlags: List<DuplicateFlag>,   // only for the uploader and moderators
     val related: List<RelatedDocument>,
     val copiesHidden: Int,
+    val progress: Progress? = null,          // your own, once you have opened it
 )
 
 // -------------------------------- uploads --------------------------------- //
