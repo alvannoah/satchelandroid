@@ -15,6 +15,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +47,8 @@ import com.example.satchel.ui.screens.LoginScreen
 import com.example.satchel.ui.screens.MyUploadsScreen
 import com.example.satchel.ui.screens.QuizScreen
 import com.example.satchel.ui.screens.UploadScreen
+import com.example.satchel.ui.screens.ViewerScreen
+import androidx.compose.ui.text.style.TextOverflow
 
 /** Login when logged out; otherwise the four tabs. */
 @Composable
@@ -46,6 +58,17 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
 
     when (val state = auth) {
         AuthState.Checking -> Loading(message = "Signing you in…")
+        // Offline at start-up: keep the login, and let the person retry rather than sign in again.
+        is AuthState.Unreachable -> Column(
+            Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(state.message, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = container.session::restore) { Text("Try again") }
+            TextButton(onClick = { container.session.logOut() }) { Text("Sign out") }
+        }
         is AuthState.LoggedOut -> {
             // Nothing from the last person's session survives a logout.
             LaunchedEffect(Unit) {
@@ -76,7 +99,16 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
     Scaffold(
         topBar = {
             if (nested) TopAppBar(
-                title = { Text(if (entry.route is Route.Quiz) "Practice quiz" else "Document") },
+                title = {
+                    Text(
+                        when (val r = entry.route) {
+                            is Route.Quiz -> "Practice quiz"
+                            is Route.Viewer -> r.title
+                            else -> "Document"
+                        },
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navigator.back() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -85,7 +117,8 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
             )
         },
         bottomBar = {
-            NavigationBar {
+            // The viewer gets the whole screen for the page.
+            if (entry.route !is Route.Viewer) NavigationBar {
                 Tab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = navigator.tab == tab,
@@ -104,7 +137,9 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                     when (val route = entry.route) {
                         Route.Library -> LibraryScreen(onOpenDocument = open)
                         is Route.Document -> DocumentScreen(route.id, onOpenDocument = open,
-                            onOpenQuiz = { navigator.push(Route.Quiz(it)) })
+                            onOpenQuiz = { navigator.push(Route.Quiz(it)) },
+                            onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
+                        is Route.Viewer -> ViewerScreen(route.documentId)
                         is Route.Quiz -> QuizScreen(route.documentId, onBackToDocument = { navigator.back() })
                         Route.Upload -> UploadScreen(onOpenDocument = open, onUploaded = { uploads++ })
                         Route.MyUploads -> MyUploadsScreen(uploads, onOpenDocument = open)

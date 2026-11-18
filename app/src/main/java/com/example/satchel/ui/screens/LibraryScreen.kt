@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.satchel.container
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.ui.LayoutIcons
+import com.example.satchel.ui.shareFiles
 import java.io.File
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -428,25 +429,6 @@ private fun SelectionBar(vm: LibraryViewModel) {
     }
 }
 
-/** Opens the share sheet with the files. False if no app can take them. */
-private fun shareFiles(context: Context, uris: List<Uri>): Boolean {
-    val send = if (uris.size == 1) {
-        Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.single())
-    } else {
-        Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-    }
-    send.type = "*/*"
-    // Grant the receiving app read access to every file, not only the first.
-    send.clipData = ClipData.newRawUri(null, uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
-    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    if (context.packageManager.queryIntentActivities(send, 0).isEmpty()) return false
-    return try {
-        context.startActivity(Intent.createChooser(send, "Share ${plural(uris.size, "document")}"))
-        true
-    } catch (_: ActivityNotFoundException) {
-        false
-    }
-}
 
 /**
  * One grid for every layout: in Grid, documents share rows (two on a phone, more

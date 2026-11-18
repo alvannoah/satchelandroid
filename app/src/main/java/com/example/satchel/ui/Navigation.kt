@@ -20,6 +20,7 @@ sealed interface Route {
     data object Library : Route
     data class Document(val id: Int) : Route
     data class Quiz(val documentId: Int) : Route
+    data class Viewer(val documentId: Int, val title: String) : Route
     data object Upload : Route
     data object MyUploads : Route
     data object Account : Route

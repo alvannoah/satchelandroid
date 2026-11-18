@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,7 +56,7 @@ import com.example.satchel.ui.SectionTitle
 import com.example.satchel.ui.StatusBadge
 import com.example.satchel.ui.formatDate
 import com.example.satchel.ui.formatSize
-import com.example.satchel.ui.mimeTypeFor
+import com.example.satchel.ui.openExternally
 import com.example.satchel.ui.percent
 import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
@@ -105,7 +106,7 @@ class DocumentViewModel(private val id: Int, private val api: ApiClient, private
 }
 
 @Composable
-fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> Unit) {
+fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> Unit, onView: (Int, String) -> Unit) {
     val vm = screenViewModel { DocumentViewModel(id, it.api, it.files) }
     val context = LocalContext.current
     val container = context.container
@@ -113,7 +114,7 @@ fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> 
     vm.readyToOpen?.let { file ->
         LaunchedEffect(file) {
             vm.readyToOpen = null
-            vm.downloadError = openFile(context, container.files.shareableUri(file), file.name)
+            vm.downloadError = openExternally(context, container.files.shareableUri(file), file.name)
         }
     }
 
@@ -124,7 +125,7 @@ fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> 
         error?.status == 404 -> EmptyState("This document doesn’t exist or isn’t available to you.")
         error != null -> EmptyState(error.message ?: "Something went wrong.", actionLabel = "Try again", onAction = vm::load)
         detail == null -> Loading()
-        else -> DocumentContent(detail, vm, onOpenDocument, onOpenQuiz)
+        else -> DocumentContent(detail, vm, onOpenDocument, onOpenQuiz, onView)
     }
 }
 
@@ -134,8 +135,10 @@ private fun DocumentContent(
     vm: DocumentViewModel,
     onOpenDocument: (Int) -> Unit,
     onOpenQuiz: (Int) -> Unit,
+    onView: (Int, String) -> Unit,
 ) {
     val doc = detail.document
+    val kind = FileKind.of(doc.originalFilename)
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -163,13 +166,14 @@ private fun DocumentContent(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { vm.open(doc) }, enabled = !vm.downloading, modifier = Modifier.weight(1f)) {
-                    if (vm.downloading) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Downloading…")
-                    } else {
-                        Text("Open ${FileKind.of(doc.originalFilename).label}")
+                // Read inside Satchel; files it cannot show are opened in another app instead.
+                if (kind != FileKind.Other) {
+                    Button(onClick = { onView(doc.id, doc.title) }, modifier = Modifier.weight(1f)) {
+                        Text("View ${kind.label}")
+                    }
+                } else {
+                    Button(onClick = { vm.open(doc) }, enabled = !vm.downloading, modifier = Modifier.weight(1f)) {
+                        Text(if (vm.downloading) "Downloading…" else "Open file")
                     }
                 }
                 if (doc.status == Status.PUBLISHED) {
@@ -177,6 +181,17 @@ private fun DocumentContent(
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Practice quiz")
+                    }
+                }
+            }
+            if (kind != FileKind.Other) {
+                TextButton(onClick = { vm.open(doc) }, enabled = !vm.downloading) {
+                    if (vm.downloading) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Downloading…")
+                    } else {
+                        Text("Open in another app")
                     }
                 }
             }
@@ -248,20 +263,5 @@ private fun Detail(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(120.dp))
         Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-    }
-}
-
-/** Hands a downloaded file to a viewer app. Returns an error message, or null. */
-private fun openFile(context: Context, uri: Uri, name: String): String? {
-    val view = Intent(Intent.ACTION_VIEW)
-        .setDataAndType(uri, mimeTypeFor(name))
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    val noViewer = "No app on this phone can open ${FileKind.of(name).label} files. Install a viewer and try again."
-    if (context.packageManager.queryIntentActivities(view, 0).isEmpty()) return noViewer
-    return try {
-        context.startActivity(view)
-        null
-    } catch (_: ActivityNotFoundException) {
-        noViewer
     }
 }

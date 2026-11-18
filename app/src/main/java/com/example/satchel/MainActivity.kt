@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.core.net.toUri
 import com.example.satchel.ui.Navigator
 import com.example.satchel.ui.SatchelApp
@@ -22,7 +24,10 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleSignInReturn(intent)
         setContent {
             SatchelTheme {
-                SatchelApp(navigator, onOpenBrowser = ::openSignIn)
+                // The Surface sets the background and the default text colour for every screen.
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    SatchelApp(navigator, onOpenBrowser = ::openSignIn)
+                }
             }
         }
     }

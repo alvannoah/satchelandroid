@@ -14,6 +14,9 @@ sealed interface AuthState {
     data object Checking : AuthState
     data class LoggedOut(val message: String? = null) : AuthState
     data class LoggedIn(val user: User) : AuthState
+
+    /** A saved login could not be checked because the server is unreachable. It is kept for a retry. */
+    data class Unreachable(val message: String) : AuthState
 }
 
 /** Who is logged in. The token lives in [SecureStore], encrypted, and in memory. */
@@ -31,12 +34,13 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
     /** Confirms a saved login is still valid (it lasts 8 hours). */
     fun restore() {
         if (token == null) return
+        _state.value = AuthState.Checking
         scope.launch {
             try {
                 _state.value = AuthState.LoggedIn(api.me())
             } catch (e: ApiException) {
                 if (e.status == 401) logOut("Your login has expired. Please sign in again.")
-                else _state.value = AuthState.LoggedOut(e.message)   // offline: let them retry from the login screen
+                else _state.value = AuthState.Unreachable(e.message ?: "Cannot reach the server.")
             }
         }
     }
