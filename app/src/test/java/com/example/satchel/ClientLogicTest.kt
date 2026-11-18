@@ -1,0 +1,122 @@
+package com.example.satchel
+
+import com.example.satchel.data.ApiClient
+import com.example.satchel.data.DocumentDetail
+import com.example.satchel.data.Filters
+import com.example.satchel.data.Hierarchy
+import com.example.satchel.data.Pkce
+import com.example.satchel.data.TokenResponse
+import com.example.satchel.ui.FileKind
+import com.example.satchel.ui.formatSize
+import com.example.satchel.ui.isAcademicYear
+import com.example.satchel.ui.percent
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PkceTest {
+    @Test
+    fun challengeMatchesRfc7636Example() {
+        // RFC 7636, appendix B
+        assertEquals(
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            Pkce.challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+        )
+    }
+
+    @Test
+    fun verifierMeetsTheApiPattern() {
+        // The API accepts ^[A-Za-z0-9_-]{43,128}$
+        repeat(20) { assertTrue(Regex("^[A-Za-z0-9_-]{43,128}$").matches(Pkce.newVerifier())) }
+        assertTrue(Regex("^[A-Za-z0-9_-]{43,128}$").matches(Pkce.challenge(Pkce.newVerifier())))
+    }
+
+    @Test
+    fun verifiersAreRandom() {
+        assertFalse(Pkce.newVerifier() == Pkce.newVerifier())
+    }
+}
+
+/** The response shapes from SimilarityEngine/satchel/schemas.py decode into the app's models. */
+class DecodingTest {
+    private val json = ApiClient("https://example.test/api", token = { null }, onUnauthorized = {}).json
+
+    private val document = """
+        {"id": 7, "title": "Lecture 3: Pipelining", "course": {"id": 2, "code": "CS201", "name": "Computer Structures"},
+         "document_type": {"id": 1, "name": "Lecture notes"}, "academic_year": "2025/2026", "official": true,
+         "status": "published", "original_filename": "L03.pdf", "size_bytes": 482133,
+         "uploaded_at": "2026-11-17T09:30:00", "uploader": {"id": 3, "full_name": "Dr Okello"},
+         "reviewed_at": null, "review_note": null}
+    """
+
+    @Test
+    fun tokenResponse() {
+        val r = json.decodeFromString<TokenResponse>("""
+            {"access_token": "abc", "token_type": "bearer", "expires_in": 28800,
+             "user": {"id": 1, "email": "s@example.test", "full_name": "A Student", "role": "student",
+                      "is_active": true, "created_at": "2026-11-01T10:00:00", "moderated_courses": []}}
+        """)
+        assertEquals("abc", r.accessToken)
+        assertEquals("A Student", r.user.fullName)
+    }
+
+    @Test
+    fun documentDetailWithRecommendations() {
+        val d = json.decodeFromString<DocumentDetail>("""
+            {"document": $document, "can_moderate": false, "duplicate_flags": [],
+             "related": [{"score": 0.42, "document": $document}], "copies_hidden": 1}
+        """)
+        assertEquals("CS201", d.document.course.code)
+        assertEquals("Lecture notes", d.document.documentType.name)
+        assertEquals(0.42, d.related.single().score, 1e-9)
+        assertNull(d.document.reviewNote)
+    }
+
+    @Test
+    fun hierarchy() {
+        val h = json.decodeFromString<Hierarchy>("""
+            {"institution": "ISBAT", "mode": "institution",
+             "programmes": [{"id": 1, "name": "BSc SE", "courses": [
+                {"id": 2, "code": "CS201", "name": "Computer Structures", "year_of_study": 2, "semester": 1,
+                 "published_documents": 12}]}],
+             "document_types": [{"id": 1, "name": "Lecture notes"}], "academic_years": ["2025/2026"],
+             "ai_quiz_available": true}
+        """)
+        assertEquals(12, h.courses.single().publishedDocuments)
+        assertTrue(h.aiQuizAvailable)
+    }
+}
+
+class FormatTest {
+    @Test
+    fun filtersBecomeTheApisQueryParameters() {
+        assertEquals(
+            listOf("course_id" to "2", "official" to "false", "academic_year" to "2025/2026"),
+            Filters(courseId = 2, official = false, academicYear = "2025/2026").asQuery(),
+        )
+        assertTrue(Filters().asQuery().isEmpty())
+    }
+
+    @Test
+    fun academicYearFollowsTheApisRule() {
+        assertTrue(isAcademicYear("2025/2026"))
+        assertFalse(isAcademicYear("2025/2027"))
+        assertFalse(isAcademicYear("2025-2026"))
+    }
+
+    @Test
+    fun fileKinds() {
+        assertEquals(FileKind.Pdf, FileKind.of("Notes.PDF"))
+        assertEquals(FileKind.Pptx, FileKind.of("slides.pptx"))
+        assertEquals(FileKind.Other, FileKind.of("README"))
+    }
+
+    @Test
+    fun sizesAndScores() {
+        assertEquals("1 KB", formatSize(10))
+        assertEquals("471 KB", formatSize(482133))
+        assertEquals("57%", percent(0.57))
+    }
+}
