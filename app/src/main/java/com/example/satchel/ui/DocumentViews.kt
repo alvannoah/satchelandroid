@@ -24,7 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,22 +50,47 @@ import com.example.satchel.ui.theme.Satchel
 import com.example.satchel.ui.theme.SatchelColors
 
 /** How a list of documents is shown. */
-enum class DocLayout(val label: String, val description: String) {
-    Cards("Cards", "Title, course, type and source"),
-    Compact("Compact", "One line each: fits the most on screen"),
-    Grid("Grid", "Tiles with a page preview");
+enum class DocLayout(val label: String, val description: String, val icon: ImageVector) {
+    Cards("Cards", "Title, course, type and source", LayoutIcons.Cards),
+    Compact("Compact", "One line each: fits the most on screen", LayoutIcons.Compact),
+    Grid("Grid", "Tiles with a page preview", LayoutIcons.Grid);
 
     companion object {
         fun from(name: String?): DocLayout = entries.firstOrNull { it.name == name } ?: Cards
     }
 }
 
-/** A "View" button with a menu of layouts. */
+/**
+ * Icons for the layouts, drawn on Material's 24-unit grid. The core icon set has
+ * none, and the extended set is a large dependency for three icons.
+ */
+object LayoutIcons {
+    private fun icon(name: String, shapes: PathBuilder.() -> Unit) = ImageVector.Builder(
+        name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f,
+    ).path(fill = SolidColor(Color.Black), pathBuilder = shapes).build()
+
+    private fun PathBuilder.rect(x: Float, y: Float, w: Float, h: Float) {
+        moveTo(x, y); horizontalLineToRelative(w); verticalLineToRelative(h); horizontalLineToRelative(-w); close()
+    }
+
+    /** Two stacked cards. */
+    val Cards = icon("Cards") { rect(3f, 4f, 18f, 7f); rect(3f, 13f, 18f, 7f) }
+
+    /** Four thin rows. */
+    val Compact = icon("Compact") { listOf(4f, 9f, 14f, 19f).forEach { rect(3f, it - 1f, 18f, 2f) } }
+
+    /** Four tiles. */
+    val Grid = icon("Grid") { rect(3f, 3f, 8f, 8f); rect(13f, 3f, 8f, 8f); rect(3f, 13f, 8f, 8f); rect(13f, 13f, 8f, 8f) }
+}
+
+/** An icon button showing the current layout, with a menu of layouts. */
 @Composable
 fun LayoutMenu(layout: DocLayout, onChange: (DocLayout) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }) { Text("View: ${layout.label}") }
+        IconButton(onClick = { open = true }) {
+            Icon(layout.icon, contentDescription = "View: ${layout.label}. Change layout")
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DocLayout.entries.forEach { option ->
                 DropdownMenuItem(
@@ -72,9 +101,10 @@ fun LayoutMenu(layout: DocLayout, onChange: (DocLayout) -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
-                    leadingIcon = {
-                        if (option == layout) Icon(Icons.Filled.Check, contentDescription = "Selected")
-                        else Spacer(Modifier.size(24.dp))
+                    leadingIcon = { Icon(option.icon, contentDescription = null) },
+                    trailingIcon = {
+                        if (option == layout) Icon(Icons.Filled.Check, contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.primary)
                     },
                     onClick = { open = false; onChange(option) },
                 )
