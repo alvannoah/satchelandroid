@@ -103,7 +103,9 @@ class ViewerViewModel(private val id: Int, private val api: ApiClient, private v
         error = null
         viewModelScope.launch {
             try {
-                val doc = document ?: api.document(id, related = 0).document.also { document = it }
+                // A downloaded document opens without the server.
+                val doc = document ?: files.downloaded(id)?.document ?: api.document(id, related = 0).document
+                document = doc
                 stage = "Downloading…"
                 val f = files.fetch(doc).also { file = it }
                 stage = "Preparing…"

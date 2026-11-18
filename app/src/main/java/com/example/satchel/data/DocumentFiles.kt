@@ -8,24 +8,97 @@ import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.example.satchel.ui.mimeTypeFor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
+/** A downloaded document: its details and its file, readable without the server. */
+data class Download(val document: Document, val file: File, val savedAt: Long)
+
 /**
- * Documents' files on the phone. Downloads go to a private cache first (shared
- * with viewer apps through the FileProvider in res/xml/file_paths.xml), and can
- * then be copied to the public Downloads/Satchel folder.
+ * Documents' files on the phone, in three places:
+ * - a private cache, for opening once (Android may clear it);
+ * - Satchel's Downloads, kept until removed and readable offline, one folder per
+ *   account, so someone else signing in on the phone does not see them;
+ * - the phone's public Downloads/Satchel folder, when the person saves a copy there.
+ * Files reach other apps through the FileProvider in res/xml/file_paths.xml.
  */
 class DocumentFiles(private val context: Context, private val api: ApiClient) {
     private val cache = File(context.cacheDir, "documents")
+
+    private companion object {
+        const val META = "document.json"
+    }
+
+    /** The signed-in account's id, set by AppContainer; downloads are kept per account. */
+    var owner: () -> Int? = { null }
+
+    private val _downloads = MutableStateFlow<List<Download>>(emptyList())
+
+    /** The signed-in account's downloads, newest first. Call [loadDownloads] after signing in. */
+    val downloads: StateFlow<List<Download>> = _downloads.asStateFlow()
+
+    private fun downloadsDir(): File? = owner()?.let { File(context.filesDir, "downloads/$it") }
+
+    /** Reads the downloads folder: each document has <id>/document.json and its file. */
+    suspend fun loadDownloads() {
+        val root = downloadsDir()
+        _downloads.value = withContext(Dispatchers.IO) {
+            root?.listFiles().orEmpty().mapNotNull { dir ->
+                val meta = File(dir, META)
+                val doc = runCatching { SatchelJson.decodeFromString<Document>(meta.readText()) }.getOrNull()
+                    ?: return@mapNotNull null
+                val file = File(dir, fileName(doc)).takeIf { it.exists() } ?: return@mapNotNull null
+                Download(doc, file, meta.lastModified())
+            }.sortedByDescending { it.savedAt }
+        }
+    }
+
+    fun downloaded(id: Int): Download? = _downloads.value.firstOrNull { it.document.id == id }
+
+    /** Keeps the document in Satchel's Downloads, so it can be read without internet. */
+    suspend fun download(doc: Document) {
+        if (downloaded(doc.id) != null) return
+        val source = fetch(doc)
+        val root = downloadsDir() ?: throw ApiException(401, "Sign in to download documents.")
+        withContext(Dispatchers.IO) {
+            val dir = File(root, "${doc.id}").apply { mkdirs() }
+            val target = File(dir, fileName(doc))
+            val partial = File(dir, "${target.name}.part")
+            try {
+                source.copyTo(partial, overwrite = true)
+                if (!partial.renameTo(target)) throw IOException("rename failed")
+                // Written last: a folder without it is an unfinished download and is ignored.
+                File(dir, META).writeText(SatchelJson.encodeToString(Document.serializer(), doc))
+            } catch (e: IOException) {
+                partial.delete()
+                throw ApiException(0, "Not enough space to download “${doc.title}”.")
+            }
+        }
+        loadDownloads()
+    }
+
+    suspend fun removeDownloads(ids: Collection<Int>) {
+        val root = downloadsDir() ?: return
+        withContext(Dispatchers.IO) { ids.forEach { File(root, "$it").deleteRecursively() } }
+        loadDownloads()
+    }
+
+    /** Forget the list when someone signs out; their files stay for when they return. */
+    fun forgetDownloads() {
+        _downloads.value = emptyList()
+    }
 
     /** The uploader's file name is only for display: keep letters, digits, dots, dashes and spaces. */
     fun fileName(doc: Document): String =
         doc.originalFilename.replace(Regex("""[^\w .\-]"""), "_").ifBlank { "document" }
 
-    /** The document's file in the cache, downloading it if it is not there yet. */
+    /** The document's file: the downloaded copy if there is one, else the cache, downloading if needed. */
     suspend fun fetch(doc: Document): File {
+        downloaded(doc.id)?.file?.let { return it }
         val target = File(cache, "${doc.id}/${fileName(doc)}")
         if (!(target.exists() && target.length() == doc.sizeBytes)) api.download(doc.id, target)
         return target
@@ -35,7 +108,7 @@ class DocumentFiles(private val context: Context, private val api: ApiClient) {
     fun shareableUri(file: File): Uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
 
     /**
-     * Copies the document into Downloads/Satchel, where the Files app and others
+     * Copies the document into the phone's Downloads/Satchel, where the Files app and others
      * can see it. Needs no storage permission from Android 10 (the app's minimum).
      * If a file of the same name is already there, Android picks a new name.
      */

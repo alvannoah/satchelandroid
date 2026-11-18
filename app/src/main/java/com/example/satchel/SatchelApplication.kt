@@ -3,6 +3,7 @@ package com.example.satchel
 import android.app.Application
 import android.content.Context
 import com.example.satchel.data.ApiClient
+import com.example.satchel.data.AuthState
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SecureStore
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
 
     init {
         session.api = api
+        files.owner = { (session.state.value as? AuthState.LoggedIn)?.user?.id }
     }
 }
 

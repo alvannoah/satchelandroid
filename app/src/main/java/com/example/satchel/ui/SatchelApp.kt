@@ -42,6 +42,7 @@ import com.example.satchel.data.AuthState
 import com.example.satchel.data.User
 import com.example.satchel.ui.screens.AccountScreen
 import com.example.satchel.ui.screens.DocumentScreen
+import com.example.satchel.ui.screens.DownloadsScreen
 import com.example.satchel.ui.screens.LibraryScreen
 import com.example.satchel.ui.screens.LoginScreen
 import com.example.satchel.ui.screens.MyUploadsScreen
@@ -75,10 +76,14 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
                 navigator.reset()
                 container.hierarchy.clear()
                 container.files.clearCache()
+                container.files.forgetDownloads()
             }
             LoginScreen(state.message) { providerId -> onOpenBrowser(container.session.startSso(providerId)) }
         }
-        is AuthState.LoggedIn -> Main(state.user, navigator, onLogOut = { container.session.logOut() })
+        is AuthState.LoggedIn -> {
+            LaunchedEffect(state.user.id) { container.files.loadDownloads() }
+            Main(state.user, navigator, onLogOut = { container.session.logOut() })
+        }
     }
 }
 
@@ -143,6 +148,7 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                         is Route.Quiz -> QuizScreen(route.documentId, onBackToDocument = { navigator.back() })
                         Route.Upload -> UploadScreen(onOpenDocument = open, onUploaded = { uploads++ })
                         Route.MyUploads -> MyUploadsScreen(uploads, onOpenDocument = open)
+                        Route.Downloads -> DownloadsScreen(onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
                         Route.Account -> AccountScreen(user, onLogOut)
                     }
                 }

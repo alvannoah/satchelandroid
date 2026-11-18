@@ -35,6 +35,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/** The API's JSON: snake_case keys, unknown keys ignored. Also used to keep documents on the phone. */
+@OptIn(ExperimentalSerializationApi::class)
+val SatchelJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    namingStrategy = JsonNamingStrategy.SnakeCase
+}
+
 /** An error to show the person. status 0 means the server could not be reached. */
 class ApiException(val status: Int, message: String) : Exception(message)
 
@@ -59,12 +67,7 @@ class ApiClient(
         .writeTimeout(120, TimeUnit.SECONDS)  // uploads of up to 25 MB
         .build()
 
-    @OptIn(ExperimentalSerializationApi::class)
-    val json = Json {
-        ignoreUnknownKeys = true
-        explicitNulls = false
-        namingStrategy = JsonNamingStrategy.SnakeCase
-    }
+    val json = SatchelJson
 
     // ------------------------------ accounts ------------------------------ //
 

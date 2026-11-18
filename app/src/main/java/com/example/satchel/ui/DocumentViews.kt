@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -269,5 +272,34 @@ fun ScoreBar(score: Double) {
         Spacer(Modifier.width(6.dp))
         Text("${percent(score)} match", style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+/** Replaces a screen's top bar while documents are selected: count, Select all, then the screen's actions. */
+@Composable
+fun SelectionBar(
+    count: Int,
+    busy: Boolean,
+    onClose: () -> Unit,
+    onSelectAll: (() -> Unit)?,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClose, enabled = !busy) {
+            Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+        }
+        Text("$count selected", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.weight(1f))
+        if (onSelectAll != null) TextButton(onClick = onSelectAll, enabled = !busy) { Text("Select all") }
+        actions()
     }
 }

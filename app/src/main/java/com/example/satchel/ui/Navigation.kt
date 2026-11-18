@@ -23,6 +23,7 @@ sealed interface Route {
     data class Viewer(val documentId: Int, val title: String) : Route
     data object Upload : Route
     data object MyUploads : Route
+    data object Downloads : Route
     data object Account : Route
 }
 
@@ -30,6 +31,7 @@ enum class Tab(val label: String, val icon: ImageVector, val root: Route) {
     Library("Library", Icons.Filled.Home, Route.Library),
     Upload("Upload", Icons.Filled.AddCircle, Route.Upload),
     MyUploads("My uploads", Icons.AutoMirrored.Filled.List, Route.MyUploads),
+    Downloads("Downloads", LayoutIcons.Download, Route.Downloads),
     Account("Account", Icons.Filled.AccountCircle, Route.Account),
 }
 

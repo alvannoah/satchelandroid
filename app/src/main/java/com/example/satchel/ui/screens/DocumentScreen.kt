@@ -57,6 +57,9 @@ import com.example.satchel.ui.StatusBadge
 import com.example.satchel.ui.formatDate
 import com.example.satchel.ui.formatSize
 import com.example.satchel.ui.openExternally
+import com.example.satchel.ui.LayoutIcons
+import androidx.compose.material.icons.filled.Check
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.satchel.ui.percent
 import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
@@ -70,6 +73,26 @@ class DocumentViewModel(private val id: Int, private val api: ApiClient, private
     var downloading by mutableStateOf(false)
         private set
     var downloadError by mutableStateOf<String?>(null)
+
+    /** Whether this document is in Satchel's Downloads. */
+    val downloads = files.downloads
+    var saving by mutableStateOf(false)
+        private set
+
+    fun download(doc: Document) {
+        if (saving) return
+        saving = true
+        downloadError = null
+        viewModelScope.launch {
+            try {
+                files.download(doc)
+            } catch (e: ApiException) {
+                downloadError = e.message
+            } finally {
+                saving = false
+            }
+        }
+    }
 
     /** A downloaded file waiting to be handed to a viewer app. */
     var readyToOpen by mutableStateOf<File?>(null)
@@ -184,14 +207,28 @@ private fun DocumentContent(
                     }
                 }
             }
-            if (kind != FileKind.Other) {
-                TextButton(onClick = { vm.open(doc) }, enabled = !vm.downloading) {
-                    if (vm.downloading) {
-                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Downloading…")
-                    } else {
-                        Text("Open in another app")
+            val downloads by vm.downloads.collectAsStateWithLifecycle()
+            val downloaded = downloads.any { it.document.id == doc.id }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { vm.download(doc) }, enabled = !downloaded && !vm.saving) {
+                    Icon(if (downloaded) Icons.Filled.Check else LayoutIcons.Download, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(when {
+                        downloaded -> "Downloaded"
+                        vm.saving -> "Downloading…"
+                        else -> "Download"
+                    })
+                }
+                if (kind != FileKind.Other) {
+                    TextButton(onClick = { vm.open(doc) }, enabled = !vm.downloading) {
+                        if (vm.downloading) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Opening…")
+                        } else {
+                            Text("Open in another app")
+                        }
                     }
                 }
             }

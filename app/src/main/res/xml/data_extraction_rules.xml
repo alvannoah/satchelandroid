@@ -3,6 +3,7 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="satchel.secure.xml" />
+        <exclude domain="file" path="downloads/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="satchel.secure.xml" />

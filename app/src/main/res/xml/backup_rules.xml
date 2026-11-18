@@ -3,4 +3,6 @@
      leaves the device, so a restored copy could not be read: leave it out. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="satchel.secure.xml" />
+    <!-- Downloaded documents can be downloaded again; they would overflow the backup. -->
+    <exclude domain="file" path="downloads/" />
 </full-backup-content>

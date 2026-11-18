@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="documents" path="documents/" />
+    <!-- Satchel's Downloads, readable offline. -->
+    <files-path name="downloads" path="downloads/" />
 </paths>

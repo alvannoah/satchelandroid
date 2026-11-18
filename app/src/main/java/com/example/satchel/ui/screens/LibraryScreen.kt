@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.satchel.container
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.ui.LayoutIcons
+import com.example.satchel.ui.SelectionBar
 import com.example.satchel.ui.shareFiles
 import java.io.File
 import androidx.compose.foundation.horizontalScroll
@@ -145,9 +146,9 @@ class LibraryViewModel(
 
     fun clearSelection() = selection.clear()
 
-    fun downloadSelected() = runBulk("Downloading", files::saveToDownloads) { saved, failed ->
+    fun downloadSelected() = runBulk("Downloading", files::download) { saved, failed ->
         message = buildString {
-            if (saved.isNotEmpty()) append("Saved ${plural(saved.size, "file")} to Downloads/Satchel.")
+            if (saved.isNotEmpty()) append("Downloaded ${plural(saved.size, "document")}. Read them offline in Downloads.")
             if (failed.isNotEmpty()) append(" Could not save: ${failed.joinToString(", ")}.")
         }.trim()
         if (failed.isEmpty()) clearSelection()
@@ -362,7 +363,7 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        if (vm.selecting) SelectionBar(vm) else OutlinedTextField(
+        if (vm.selecting) LibrarySelectionBar(vm) else OutlinedTextField(
             value = vm.queryText,
             onValueChange = { vm.queryText = it },
             placeholder = { Text("Search the library") },
@@ -391,7 +392,10 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
         PullToRefreshBox(isRefreshing = vm.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
             when {
                 vm.loading -> Loading()
-                vm.error != null && hierarchy == null -> EmptyState(vm.error!!, actionLabel = "Try again", onAction = vm::retry)
+                vm.error != null && hierarchy == null -> EmptyState(
+                    vm.error!! + "\n\nDocuments you downloaded can still be read in Downloads.",
+                    actionLabel = "Try again", onAction = vm::retry,
+                )
                 else -> DocumentGrid(vm, hierarchy, listState, onOpenDocument)
             }
         }
@@ -402,29 +406,19 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
 
 /** Replaces the search field while documents are selected. */
 @Composable
-private fun SelectionBar(vm: LibraryViewModel) {
+private fun LibrarySelectionBar(vm: LibraryViewModel) {
     val busy = vm.bulk != null
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    SelectionBar(
+        count = vm.selection.size,
+        busy = busy,
+        onClose = vm::clearSelection,
+        onSelectAll = if (vm.allShownSelected) null else vm::selectAll,
     ) {
-        IconButton(onClick = vm::clearSelection, enabled = !busy) {
-            Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
-        }
-        Text("${vm.selection.size} selected", style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.weight(1f))
-        if (!vm.allShownSelected) TextButton(onClick = vm::selectAll, enabled = !busy) { Text("Select all") }
         IconButton(onClick = vm::shareSelected, enabled = !busy) {
             Icon(Icons.Filled.Share, contentDescription = "Share selected")
         }
         IconButton(onClick = vm::downloadSelected, enabled = !busy) {
-            Icon(LayoutIcons.Download, contentDescription = "Save selected to Downloads")
+            Icon(LayoutIcons.Download, contentDescription = "Download selected for reading offline")
         }
     }
 }

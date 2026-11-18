@@ -25,24 +25,45 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
     var token: String? = store.get(TOKEN)
         private set
 
-    private val _state = MutableStateFlow<AuthState>(if (token == null) AuthState.LoggedOut() else AuthState.Checking)
+    /** The last signed-in user, so the app (and its downloads) can open without the server. */
+    private var savedUser: User? = store.get(USER)?.let { runCatching { SatchelJson.decodeFromString<User>(it) }.getOrNull() }
+
+    private val _state = MutableStateFlow<AuthState>(
+        when {
+            token == null -> AuthState.LoggedOut()
+            savedUser != null -> AuthState.LoggedIn(savedUser!!)   // checked with the server in restore()
+            else -> AuthState.Checking
+        },
+    )
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
     /** Set by AppContainer, which builds the client with this session's token. */
     lateinit var api: ApiClient
 
-    /** Confirms a saved login is still valid (it lasts 8 hours). */
+    /**
+     * Confirms a saved login is still valid (it lasts 8 hours). Offline, a
+     * remembered user stays signed in, so downloaded documents can be read.
+     */
     fun restore() {
         if (token == null) return
-        _state.value = AuthState.Checking
+        if (_state.value !is AuthState.LoggedIn) _state.value = AuthState.Checking
         scope.launch {
             try {
-                _state.value = AuthState.LoggedIn(api.me())
+                remember(api.me())
             } catch (e: ApiException) {
-                if (e.status == 401) logOut("Your login has expired. Please sign in again.")
-                else _state.value = AuthState.Unreachable(e.message ?: "Cannot reach the server.")
+                when {
+                    e.status == 401 -> logOut("Your login has expired. Please sign in again.")
+                    savedUser != null -> {}   // offline: carry on with the remembered user
+                    else -> _state.value = AuthState.Unreachable(e.message ?: "Cannot reach the server.")
+                }
             }
         }
+    }
+
+    private fun remember(user: User) {
+        savedUser = user
+        store.put(USER, SatchelJson.encodeToString(User.serializer(), user))
+        _state.value = AuthState.LoggedIn(user)
     }
 
     suspend fun logIn(email: String, password: String) = accept(api.login(email.trim(), password))
@@ -84,7 +105,9 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
 
     fun logOut(message: String? = null) {
         token = null
+        savedUser = null
         store.put(TOKEN, null)
+        store.put(USER, null)
         _state.value = AuthState.LoggedOut(message)
     }
 
@@ -96,11 +119,12 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
     private fun accept(response: TokenResponse) {
         token = response.accessToken
         store.put(TOKEN, response.accessToken)
-        _state.value = AuthState.LoggedIn(response.user)
+        remember(response.user)
     }
 
     private companion object {
         const val TOKEN = "token"
+        const val USER = "user"
         const val VERIFIER = "sso_verifier"
     }
 }
