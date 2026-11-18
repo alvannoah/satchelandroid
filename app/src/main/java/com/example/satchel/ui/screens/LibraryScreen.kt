@@ -96,6 +96,7 @@ import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SearchResults
 import com.example.satchel.data.ReadingItem
+import com.example.satchel.data.Progress
 import com.example.satchel.ui.DocumentRow
 import com.example.satchel.ui.EmptyState
 import com.example.satchel.ui.Loading
@@ -216,9 +217,22 @@ class LibraryViewModel(
     var reading by mutableStateOf<List<ReadingItem>>(emptyList())
         private set
 
-    /** Optional: older servers have no reading list, and offline it is simply absent. */
+    /** Your progress by document id, to mark documents in the list as in progress or read. */
+    var progress by mutableStateOf<Map<Int, Progress>>(emptyMap())
+        private set
+
+    /**
+     * One request for both: everything started or finished (the API's limit is 100,
+     * most recent first). Optional: older servers have no reading list, and
+     * offline the marks are simply absent.
+     */
     fun loadReading() {
-        viewModelScope.launch { runCatching { api.reading("in_progress", 10) }.onSuccess { reading = it } }
+        viewModelScope.launch {
+            runCatching { api.reading("all", 100) }.onSuccess { all ->
+                progress = all.associate { it.document.id to it.progress }
+                reading = all.filter { !it.progress.completed }.take(10)
+            }
+        }
     }
     var total by mutableStateOf(0)
         private set
@@ -466,10 +480,11 @@ private fun DocumentGrid(
         val selected = if (vm.selecting) doc.id in vm.selection else null
         val click = { if (vm.selecting) vm.toggle(doc) else onOpenDocument(doc.id) }
         val longClick = { vm.toggle(doc) }
+        val read = vm.progress[doc.id]
         when (layout) {
-            DocLayout.Cards -> DocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick)
-            DocLayout.Compact -> CompactDocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick)
-            DocLayout.Grid -> DocumentTile(doc, click, score = score, selected = selected, onLongClick = longClick)
+            DocLayout.Cards -> DocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
+            DocLayout.Compact -> CompactDocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
+            DocLayout.Grid -> DocumentTile(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
         }
     }
 

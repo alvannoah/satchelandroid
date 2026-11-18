@@ -45,6 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.satchel.data.Document
+import com.example.satchel.data.Progress
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.example.satchel.data.Status
 import com.example.satchel.ui.theme.LightExtra
 import com.example.satchel.ui.theme.Satchel
@@ -136,6 +139,7 @@ fun CompactDocumentRow(
     score: Double? = null,
     selected: Boolean? = null,
     onLongClick: (() -> Unit)? = null,
+    progress: Progress? = null,
 ) {
     val kind = FileKind.of(doc.originalFilename)
     val color = kindColor(kind, Satchel.colors)
@@ -159,6 +163,17 @@ fun CompactDocumentRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
+            if (progress != null) {
+                if (progress.completed) {
+                    Icon(Icons.Filled.Check, contentDescription = "Read", tint = Satchel.colors.ok,
+                        modifier = Modifier.size(18.dp))
+                } else {
+                    Text("${progress.percent}%", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.semantics { contentDescription = "${progress.percent}% read" })
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             if (selected != null) {
                 SelectionMark(selected)
             } else if (score != null) {
@@ -185,6 +200,7 @@ fun DocumentTile(
     showStatus: Boolean = false,
     selected: Boolean? = null,
     onLongClick: (() -> Unit)? = null,
+    progress: Progress? = null,
 ) {
     val kind = FileKind.of(doc.originalFilename)
     val colors = Satchel.colors
@@ -207,6 +223,13 @@ fun DocumentTile(
                 if (showStatus && doc.status != Status.PUBLISHED) StatusBadge(doc.status) else OfficialBadge(doc.official)
             }
             if (selected != null) SelectionMark(selected, Modifier.align(Alignment.TopEnd).padding(6.dp))
+            // How far you have read, as a bar along the foot of the page.
+            if (progress != null) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth(progress.percent.coerceIn(2, 100) / 100f).height(4.dp)
+                        .background(if (progress.completed) colors.ok else MaterialTheme.colorScheme.primary),
+                )
+            }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -218,9 +241,14 @@ fun DocumentTile(
                 Text("${doc.course.code} · ${doc.documentType.name}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (score != null) ScoreBar(score)
-            else Text(doc.academicYear ?: formatDate(doc.uploadedAt), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (score != null) ScoreBar(score)
+                    else Text(doc.academicYear ?: formatDate(doc.uploadedAt), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (progress != null) ProgressBadge(progress)
+            }
         }
     }
 }
