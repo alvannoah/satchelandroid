@@ -2,7 +2,6 @@ package com.example.satchel.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +37,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,6 +76,13 @@ object LayoutIcons {
 
     /** Four thin rows. */
     val Compact = icon("Compact") { listOf(4f, 9f, 14f, 19f).forEach { rect(3f, it - 1f, 18f, 2f) } }
+
+    /** An arrow down onto a tray: save to the phone. */
+    val Download = icon("Download") {
+        rect(5f, 18f, 14f, 2f)
+        moveTo(11f, 4f); horizontalLineToRelative(2f); verticalLineTo(12.2f); lineTo(16.6f, 8.6f); lineTo(18f, 10f)
+        lineTo(12f, 16f); lineTo(6f, 10f); lineTo(7.4f, 8.6f); lineTo(11f, 12.2f); close()
+    }
 
     /** Four tiles. */
     val Grid = icon("Grid") { rect(3f, 3f, 8f, 8f); rect(13f, 3f, 8f, 8f); rect(3f, 13f, 8f, 8f); rect(13f, 13f, 8f, 8f) }
@@ -122,14 +127,21 @@ private fun kindColor(kind: FileKind, c: SatchelColors): Color = when (kind) {
 
 /** Dense: a coloured type label, the title, and course · type (or the match score) on one row. */
 @Composable
-fun CompactDocumentRow(doc: Document, onClick: () -> Unit, score: Double? = null) {
+fun CompactDocumentRow(
+    doc: Document,
+    onClick: () -> Unit,
+    score: Double? = null,
+    selected: Boolean? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
     val kind = FileKind.of(doc.originalFilename)
     val color = kindColor(kind, Satchel.colors)
     Column {
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable(onClickLabel = "Open ${doc.title}", role = Role.Button, onClick = onClick)
+                .background(if (selected == true) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
+                .documentClick(doc, selected, onClick, onLongClick)
                 .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -144,7 +156,9 @@ fun CompactDocumentRow(doc: Document, onClick: () -> Unit, score: Double? = null
                 )
             }
             Spacer(Modifier.width(8.dp))
-            if (score != null) {
+            if (selected != null) {
+                SelectionMark(selected)
+            } else if (score != null) {
                 Text(percent(score), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             } else {
                 // A small dot keeps the official/community distinction without a full badge.
@@ -161,7 +175,14 @@ fun CompactDocumentRow(doc: Document, onClick: () -> Unit, score: Double? = null
 
 /** A tile with a drawn page, like the web app's grid: the backend keeps text, not rendered pages. */
 @Composable
-fun DocumentTile(doc: Document, onClick: () -> Unit, score: Double? = null, showStatus: Boolean = false) {
+fun DocumentTile(
+    doc: Document,
+    onClick: () -> Unit,
+    score: Double? = null,
+    showStatus: Boolean = false,
+    selected: Boolean? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
     val kind = FileKind.of(doc.originalFilename)
     val colors = Satchel.colors
     val shape = RoundedCornerShape(12.dp)
@@ -169,8 +190,8 @@ fun DocumentTile(doc: Document, onClick: () -> Unit, score: Double? = null, show
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable(onClickLabel = "Open ${doc.title}", role = Role.Button, onClick = onClick),
+            .selectionBorder(selected, shape)
+            .documentClick(doc, selected, onClick, onLongClick),
     ) {
         Box(
             Modifier
@@ -182,6 +203,7 @@ fun DocumentTile(doc: Document, onClick: () -> Unit, score: Double? = null, show
             Box(Modifier.padding(6.dp)) {
                 if (showStatus && doc.status != Status.PUBLISHED) StatusBadge(doc.status) else OfficialBadge(doc.official)
             }
+            if (selected != null) SelectionMark(selected, Modifier.align(Alignment.TopEnd).padding(6.dp))
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

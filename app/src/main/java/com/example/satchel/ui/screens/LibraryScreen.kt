@@ -1,5 +1,24 @@
 package com.example.satchel.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import com.example.satchel.container
+import com.example.satchel.data.DocumentFiles
+import com.example.satchel.ui.LayoutIcons
+import java.io.File
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +74,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,11 +102,92 @@ import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
 
 /** Browsing and search share one screen: with a query, results are ranked by content; without, they are listed. */
+/** A bulk action in progress: "Downloading", 3 of 7 done. */
+data class BulkProgress(val verb: String, val done: Int, val total: Int)
+
 class LibraryViewModel(
     private val api: ApiClient,
     private val cache: HierarchyCache,
     private val prefs: Prefs,
+    private val files: DocumentFiles,
 ) : ViewModel() {
+    // ------------------------------ selection ------------------------------ //
+
+    /** Selected documents by id. Kept across searches and filters, so a selection can span courses. */
+    val selection = mutableStateMapOf<Int, Document>()
+    val selecting: Boolean get() = selection.isNotEmpty()
+
+    var bulk by mutableStateOf<BulkProgress?>(null)
+        private set
+
+    /** A one-off message for the snackbar. */
+    var message by mutableStateOf<String?>(null)
+
+    /** Downloaded files waiting for the screen to open the share sheet. */
+    var readyToShare by mutableStateOf<List<File>?>(null)
+
+    fun toggle(doc: Document) {
+        if (selection.remove(doc.id) == null) selection[doc.id] = doc
+    }
+
+    /** Selects everything listed now: the search results, or the documents loaded so far. */
+    fun selectAll() {
+        val shown = if (query.isNotEmpty()) results?.results.orEmpty().map { it.document } else items
+        shown.forEach { selection[it.id] = it }
+    }
+
+    val allShownSelected: Boolean
+        get() {
+            val shown = if (query.isNotEmpty()) results?.results.orEmpty().map { it.document } else items
+            return shown.isNotEmpty() && shown.all { it.id in selection }
+        }
+
+    fun clearSelection() = selection.clear()
+
+    fun downloadSelected() = runBulk("Downloading", files::saveToDownloads) { saved, failed ->
+        message = buildString {
+            if (saved.isNotEmpty()) append("Saved ${plural(saved.size, "file")} to Downloads/Satchel.")
+            if (failed.isNotEmpty()) append(" Could not save: ${failed.joinToString(", ")}.")
+        }.trim()
+        if (failed.isEmpty()) clearSelection()
+    }
+
+    fun shareSelected() = runBulk("Preparing", files::fetch) { ready, failed ->
+        if (failed.isNotEmpty()) message = "Could not download: ${failed.joinToString(", ")}."
+        if (ready.isNotEmpty()) readyToShare = ready
+    }
+
+    /**
+     * Runs [each] on the selected documents one at a time, counting progress, then
+     * calls [finish] with the results and the titles of any that failed.
+     */
+    private fun <T> runBulk(verb: String, each: suspend (Document) -> T, finish: (List<T>, List<String>) -> Unit) {
+        if (bulk != null) return
+        val docs = selection.values.toList()
+        if (docs.isEmpty()) return
+        bulk = BulkProgress(verb, 0, docs.size)
+        viewModelScope.launch {
+            val done = mutableListOf<T>()
+            val failed = mutableListOf<String>()
+            try {
+                docs.forEachIndexed { i, doc ->
+                    try {
+                        done += each(doc)
+                    } catch (e: ApiException) {
+                        failed += "“${doc.title}”"
+                        if (e.status == 401) return@launch   // logged out: the login screen takes over
+                    }
+                    bulk = BulkProgress(verb, i + 1, docs.size)
+                }
+                finish(done, failed)
+            } finally {
+                bulk = null
+            }
+        }
+    }
+
+    // ------------------------------- listing ------------------------------- //
+
     var layout by mutableStateOf(DocLayout.from(prefs.libraryLayout))
         private set
 
@@ -224,7 +325,7 @@ class LibraryViewModel(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
-    val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy, it.prefs) }
+    val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy, it.prefs, it.files) }
     val focus = LocalFocusManager.current
     val listState = rememberLazyGridState()
     val hierarchy = vm.hierarchy
@@ -238,8 +339,29 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
     }
     LaunchedEffect(nearEnd, vm.items.size) { if (nearEnd) vm.loadMore() }
 
+    // Back leaves selection mode before it leaves the screen.
+    BackHandler(enabled = vm.selecting) { vm.clearSelection() }
+
+    val context = LocalContext.current
+    vm.readyToShare?.let { ready ->
+        LaunchedEffect(ready) {
+            vm.readyToShare = null
+            if (shareFiles(context, ready.map(context.container.files::shareableUri))) vm.clearSelection()
+            else vm.message = "No app on this phone can receive these files."
+        }
+    }
+    // Shown from the screen's own scope: clearing vm.message would cancel an effect keyed on it.
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(vm.message) {
+        val text = vm.message ?: return@LaunchedEffect
+        vm.message = null
+        scope.launch { snackbar.showSnackbar(text, withDismissAction = true) }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
+        if (vm.selecting) SelectionBar(vm) else OutlinedTextField(
             value = vm.queryText,
             onValueChange = { vm.queryText = it },
             placeholder = { Text("Search the library") },
@@ -257,6 +379,12 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
             keyboardActions = KeyboardActions(onSearch = { vm.search(); focus.clearFocus() }),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
+        vm.bulk?.let { b ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("${b.verb} ${(b.done + 1).coerceAtMost(b.total)} of ${b.total}…", style = MaterialTheme.typography.bodySmall)
+                LinearProgressIndicator(progress = { b.done / b.total.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+            }
+        }
         if (hierarchy != null) FilterRow(hierarchy, vm.filters, vm::updateFilters)
 
         PullToRefreshBox(isRefreshing = vm.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
@@ -266,6 +394,57 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit) {
                 else -> DocumentGrid(vm, hierarchy, listState, onOpenDocument)
             }
         }
+    }
+    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** Replaces the search field while documents are selected. */
+@Composable
+private fun SelectionBar(vm: LibraryViewModel) {
+    val busy = vm.bulk != null
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = vm::clearSelection, enabled = !busy) {
+            Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
+        }
+        Text("${vm.selection.size} selected", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.weight(1f))
+        if (!vm.allShownSelected) TextButton(onClick = vm::selectAll, enabled = !busy) { Text("Select all") }
+        IconButton(onClick = vm::shareSelected, enabled = !busy) {
+            Icon(Icons.Filled.Share, contentDescription = "Share selected")
+        }
+        IconButton(onClick = vm::downloadSelected, enabled = !busy) {
+            Icon(LayoutIcons.Download, contentDescription = "Save selected to Downloads")
+        }
+    }
+}
+
+/** Opens the share sheet with the files. False if no app can take them. */
+private fun shareFiles(context: Context, uris: List<Uri>): Boolean {
+    val send = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.single())
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+    }
+    send.type = "*/*"
+    // Grant the receiving app read access to every file, not only the first.
+    send.clipData = ClipData.newRawUri(null, uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
+    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    if (context.packageManager.queryIntentActivities(send, 0).isEmpty()) return false
+    return try {
+        context.startActivity(Intent.createChooser(send, "Share ${plural(uris.size, "document")}"))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 }
 
@@ -285,11 +464,17 @@ private fun DocumentGrid(
     val docSpan: (LazyGridItemSpanScope.(Any?) -> GridItemSpan)? = if (layout == DocLayout.Grid) null else full
     val wide: LazyGridScope.(@Composable () -> Unit) -> Unit = { content -> item(span = { GridItemSpan(maxLineSpan) }) { content() } }
 
+    // While selecting, a tap selects; otherwise it opens. A long-press always selects.
     @Composable
-    fun Doc(doc: Document, score: Double?) = when (layout) {
-        DocLayout.Cards -> DocumentRow(doc, onClick = { onOpenDocument(doc.id) }, score = score)
-        DocLayout.Compact -> CompactDocumentRow(doc, onClick = { onOpenDocument(doc.id) }, score = score)
-        DocLayout.Grid -> DocumentTile(doc, onClick = { onOpenDocument(doc.id) }, score = score)
+    fun Doc(doc: Document, score: Double?) {
+        val selected = if (vm.selecting) doc.id in vm.selection else null
+        val click = { if (vm.selecting) vm.toggle(doc) else onOpenDocument(doc.id) }
+        val longClick = { vm.toggle(doc) }
+        when (layout) {
+            DocLayout.Cards -> DocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick)
+            DocLayout.Compact -> CompactDocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick)
+            DocLayout.Grid -> DocumentTile(doc, click, score = score, selected = selected, onLongClick = longClick)
+        }
     }
 
     LazyVerticalGrid(

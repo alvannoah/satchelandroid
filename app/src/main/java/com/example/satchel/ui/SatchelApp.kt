@@ -51,7 +51,7 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
             LaunchedEffect(Unit) {
                 navigator.reset()
                 container.hierarchy.clear()
-                container.documentsDir.deleteRecursively()
+                container.files.clearCache()
             }
             LoginScreen(state.message) { providerId -> onOpenBrowser(container.session.startSso(providerId)) }
         }

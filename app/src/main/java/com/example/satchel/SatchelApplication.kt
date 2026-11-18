@@ -3,6 +3,7 @@ package com.example.satchel
 import android.app.Application
 import android.content.Context
 import com.example.satchel.data.ApiClient
+import com.example.satchel.data.DocumentFiles
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SecureStore
 import com.example.satchel.data.Session
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.io.File
 
 /** The app's shared objects, made once. */
 class AppContainer(context: Context) {
@@ -23,8 +23,7 @@ class AppContainer(context: Context) {
     val hierarchy = HierarchyCache(api)
     val prefs = Prefs(context)
 
-    /** Downloaded files, which the FileProvider (res/xml/file_paths.xml) shares with viewer apps. */
-    val documentsDir = File(context.cacheDir, "documents")
+    val files = DocumentFiles(context, api)
 
     init {
         session.api = api

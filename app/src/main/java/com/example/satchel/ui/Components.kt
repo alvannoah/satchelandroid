@@ -2,7 +2,13 @@ package com.example.satchel.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -112,13 +118,16 @@ fun DocumentRow(
     score: Double? = null,
     scoreLabel: String = "match",
     showStatus: Boolean = false,
+    selected: Boolean? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
+    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-            .clickable(onClickLabel = "Open ${doc.title}", role = Role.Button, onClick = onClick)
+            .clip(shape)
+            .selectionBorder(selected, shape)
+            .documentClick(doc, selected, onClick, onLongClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -147,6 +156,52 @@ fun DocumentRow(
                 }
             }
         }
+        if (selected != null) {
+            Spacer(Modifier.width(8.dp))
+            SelectionMark(selected)
+        }
+    }
+}
+
+/**
+ * Tap to open; long-press to start selecting. While selecting ([selected] is not
+ * null) a tap selects or deselects instead.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.documentClick(doc: Document, selected: Boolean?, onClick: () -> Unit, onLongClick: (() -> Unit)?): Modifier =
+    this
+        .combinedClickable(
+            onClickLabel = when (selected) {
+                null -> "Open ${doc.title}"
+                true -> "Deselect"
+                false -> "Select"
+            },
+            onLongClickLabel = if (onLongClick != null && selected == null) "Select" else null,
+            role = Role.Button,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        )
+        .then(if (selected != null) Modifier.semantics { this.selected = selected } else Modifier)
+
+/** A highlighted border and tint on selected documents. */
+@Composable
+fun Modifier.selectionBorder(selected: Boolean?, shape: Shape): Modifier =
+    if (selected == true) {
+        border(2.dp, MaterialTheme.colorScheme.primary, shape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+    } else {
+        border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+    }
+
+/** A filled tick when selected; an empty circle when it could be. */
+@Composable
+fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier) {
+    if (selected) {
+        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+            modifier = modifier.size(24.dp).background(MaterialTheme.colorScheme.surface, CircleShape))
+    } else {
+        Box(modifier.size(24.dp).padding(2.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
     }
 }
 

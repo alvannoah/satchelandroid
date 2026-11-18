@@ -3,6 +3,7 @@ package com.example.satchel.ui.screens
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,10 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.satchel.container
 import com.example.satchel.data.ApiClient
+import com.example.satchel.data.DocumentFiles
 import com.example.satchel.data.ApiException
 import com.example.satchel.data.Document
 import com.example.satchel.data.DocumentDetail
@@ -59,7 +61,7 @@ import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
 import java.io.File
 
-class DocumentViewModel(private val id: Int, private val api: ApiClient, private val filesDir: File) : ViewModel() {
+class DocumentViewModel(private val id: Int, private val api: ApiClient, private val files: DocumentFiles) : ViewModel() {
     var detail by mutableStateOf<DocumentDetail?>(null)
         private set
     var error by mutableStateOf<ApiException?>(null)
@@ -91,12 +93,8 @@ class DocumentViewModel(private val id: Int, private val api: ApiClient, private
         downloading = true
         downloadError = null
         viewModelScope.launch {
-            // The uploader's name is only for display: keep letters, digits, dots, dashes and spaces.
-            val name = doc.originalFilename.replace(Regex("""[^\w .\-]"""), "_").ifBlank { "document" }
-            val target = File(filesDir, "${doc.id}/$name")
             try {
-                if (!(target.exists() && target.length() == doc.sizeBytes)) api.download(doc.id, target)
-                readyToOpen = target
+                readyToOpen = files.fetch(doc)
             } catch (e: ApiException) {
                 downloadError = e.message
             } finally {
@@ -108,13 +106,14 @@ class DocumentViewModel(private val id: Int, private val api: ApiClient, private
 
 @Composable
 fun DocumentScreen(id: Int, onOpenDocument: (Int) -> Unit, onOpenQuiz: (Int) -> Unit) {
-    val vm = screenViewModel { DocumentViewModel(id, it.api, it.documentsDir) }
+    val vm = screenViewModel { DocumentViewModel(id, it.api, it.files) }
     val context = LocalContext.current
+    val container = context.container
 
     vm.readyToOpen?.let { file ->
         LaunchedEffect(file) {
             vm.readyToOpen = null
-            vm.downloadError = openFile(context, file)
+            vm.downloadError = openFile(context, container.files.shareableUri(file), file.name)
         }
     }
 
@@ -253,12 +252,11 @@ private fun Detail(label: String, value: String) {
 }
 
 /** Hands a downloaded file to a viewer app. Returns an error message, or null. */
-private fun openFile(context: Context, file: File): String? {
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+private fun openFile(context: Context, uri: Uri, name: String): String? {
     val view = Intent(Intent.ACTION_VIEW)
-        .setDataAndType(uri, mimeTypeFor(file.name))
+        .setDataAndType(uri, mimeTypeFor(name))
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    val noViewer = "No app on this phone can open ${FileKind.of(file.name).label} files. Install a viewer and try again."
+    val noViewer = "No app on this phone can open ${FileKind.of(name).label} files. Install a viewer and try again."
     if (context.packageManager.queryIntentActivities(view, 0).isEmpty()) return noViewer
     return try {
         context.startActivity(view)
