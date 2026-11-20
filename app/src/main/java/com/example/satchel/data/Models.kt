@@ -127,10 +127,24 @@ data class Hierarchy(
     val myCourseIds: List<Int>? = null,
 ) {
     val courses: List<CourseNode> get() = programmes.flatMap { it.courses }
+
+    /** Whether the person has courses of their own, so "My courses / All courses" means something. */
+    val hasOwnCourses: Boolean get() = myCourseIds != null
+
+    fun isMine(courseId: Int): Boolean = myCourseIds?.contains(courseId) ?: false
+
+    /** The person's own courses first, then the rest, keeping each group's order. */
+    fun mineFirst(courses: List<CourseNode>): List<CourseNode> = courses.sortedBy { if (isMine(it.id)) 0 else 1 }
 }
 
 @Serializable
-data class DocumentPage(val total: Int, val page: Int, val pageSize: Int, val items: List<Document>)
+data class DocumentPage(
+    val total: Int,
+    val page: Int,
+    val pageSize: Int,
+    val items: List<Document>,
+    val scope: String = "all",   // "mine" if limited to the student's own courses
+)
 
 @Serializable
 data class SearchHit(val rank: Int, val score: Double, val document: Document)
@@ -141,6 +155,7 @@ data class SearchResults(
     val method: String,
     val matchedTerms: List<String>,
     val results: List<SearchHit>,
+    val scope: String = "all",
 )
 
 @Serializable

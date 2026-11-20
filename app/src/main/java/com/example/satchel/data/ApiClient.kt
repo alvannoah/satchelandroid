@@ -119,12 +119,15 @@ class ApiClient(
 
     suspend fun hierarchy(): Hierarchy = get(url("hierarchy"))
 
-    suspend fun documents(filters: Filters, page: Int, pageSize: Int): DocumentPage =
-        get(url("documents", *filters.asQuery().toTypedArray(), "page" to "$page", "page_size" to "$pageSize"))
+    /** scope: "mine" (the student's own courses, the API's default) or "all". */
+    suspend fun documents(filters: Filters, page: Int, pageSize: Int, scope: String = "mine"): DocumentPage =
+        get(url("documents", *filters.asQuery().toTypedArray(), "page" to "$page", "page_size" to "$pageSize",
+            "scope" to scope))
 
     /** method: "tfidf" (the engine's content ranking) or "keyword" (the baseline). */
-    suspend fun search(query: String, filters: Filters, method: String, topK: Int = 20): SearchResults =
-        get(url("search", "q" to query, "method" to method, "top_k" to "$topK", *filters.asQuery().toTypedArray()))
+    suspend fun search(query: String, filters: Filters, method: String, topK: Int = 20, scope: String = "mine"): SearchResults =
+        get(url("search", "q" to query, "method" to method, "top_k" to "$topK", "scope" to scope,
+            *filters.asQuery().toTypedArray()))
 
     suspend fun document(id: Int, related: Int = 8): DocumentDetail =
         get(url("documents/$id", "related" to "$related"))

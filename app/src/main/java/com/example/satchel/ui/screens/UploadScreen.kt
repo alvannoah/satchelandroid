@@ -161,7 +161,7 @@ class UploadViewModel(private val api: ApiClient, private val cache: HierarchyCa
 }
 
 @Composable
-fun UploadScreen(onOpenDocument: (Int) -> Unit, onUploaded: () -> Unit) {
+fun UploadScreen(isStudent: Boolean, onOpenDocument: (Int) -> Unit, onUploaded: () -> Unit) {
     val vm = screenViewModel { UploadViewModel(it.api, it.hierarchy) }
     vm.onUploaded = onUploaded
     val resolver = LocalContext.current.contentResolver
@@ -215,8 +215,10 @@ fun UploadScreen(onOpenDocument: (Int) -> Unit, onUploaded: () -> Unit) {
             Picker(
                 label = "Course",
                 selected = vm.courseId,
+                // The API refuses student uploads outside their own courses, so only offer those.
                 options = h.programmes.flatMap { p ->
-                    p.courses.map { c -> c.id to (if (h.programmes.size > 1) "${p.name}: " else "") + "${c.code} · ${c.name}" }
+                    p.courses.filter { !isStudent || !h.hasOwnCourses || h.isMine(it.id) }
+                        .map { c -> c.id to (if (h.programmes.size > 1) "${p.name}: " else "") + "${c.code} · ${c.name}" }
                 },
                 onSelect = { vm.courseId = it },
             )

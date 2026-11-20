@@ -166,7 +166,7 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                             onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
                         is Route.Viewer -> ViewerScreen(route.documentId)
                         is Route.Quiz -> QuizScreen(route.documentId, onBackToDocument = { navigator.back() })
-                        Route.Upload -> UploadScreen(onOpenDocument = open, onUploaded = { uploads++ })
+                        Route.Upload -> UploadScreen(user.isStudent, onOpenDocument = open, onUploaded = { uploads++ })
                         Route.MyUploads -> MyUploadsScreen(uploads, onOpenDocument = open)
                         Route.Downloads -> DownloadsScreen(onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
                         Route.Account -> AccountScreen(user, onLogOut, onMyCourses = { navigator.push(Route.MyCourses) })

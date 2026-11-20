@@ -69,6 +69,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -211,6 +214,19 @@ class LibraryViewModel(
     var method by mutableStateOf("tfidf")    // "tfidf" (the engine) or "keyword" (the baseline)
         private set
 
+    /** "mine": the student's own courses (the API's default, as on the web); "all": every course. */
+    var scope by mutableStateOf("mine")
+        private set
+
+    /** Limited to the student's courses right now (and not to one course picked by hand). */
+    val scoped: Boolean get() = hierarchy?.hasOwnCourses == true && scope == "mine" && filters.courseId == null
+
+    fun changeScope(new: String) {
+        if (new == scope) return
+        scope = new
+        reload()
+    }
+
     var items by mutableStateOf<List<Document>>(emptyList())
         private set
 
@@ -263,11 +279,11 @@ class LibraryViewModel(
             try {
                 val h = cache.get(refreshHierarchy)
                 if (query.isNotEmpty()) {
-                    val r = api.search(query, filters, method)
+                    val r = api.search(query, filters, method, scope = scope)
                     if (mine != generation) return@launch
                     results = r
                 } else {
-                    val p = api.documents(filters, 1, PAGE_SIZE)
+                    val p = api.documents(filters, 1, PAGE_SIZE, scope)
                     if (mine != generation) return@launch
                     items = p.items
                     total = p.total
@@ -292,7 +308,7 @@ class LibraryViewModel(
         loadingMore = true
         viewModelScope.launch {
             try {
-                val p = api.documents(filters, page + 1, PAGE_SIZE)
+                val p = api.documents(filters, page + 1, PAGE_SIZE, scope)
                 if (mine != generation) return@launch
                 items = items + p.items.filter { new -> items.none { it.id == new.id } }
                 total = p.total
@@ -512,11 +528,16 @@ private fun DocumentGrid(
             ContinueReading(vm.reading, onView)
         }
         if (vm.query.isEmpty() && vm.filters.courseId == null && hierarchy != null) {
-            val courses = hierarchy.programmes
+            val inProgramme = hierarchy.programmes
                 .filter { vm.filters.programmeId == null || it.id == vm.filters.programmeId }
                 .flatMap { it.courses }
+            // My courses: only those. All courses: everything, the student's own first.
+            val mineOnly = hierarchy.hasOwnCourses && vm.scope == "mine"
+            val courses = if (mineOnly) inProgramme.filter { hierarchy.isMine(it.id) } else hierarchy.mineFirst(inProgramme)
             if (courses.isNotEmpty()) wide {
-                CourseStrip(courses) { vm.updateFilters(vm.filters.copy(courseId = it)) }
+                CourseStrip(courses, if (mineOnly) "Your courses" else "Browse by course") {
+                    vm.updateFilters(vm.filters.copy(courseId = it))
+                }
             }
         }
         wide { ListHeading(vm, hierarchy) }
@@ -524,12 +545,20 @@ private fun DocumentGrid(
         if (vm.query.isNotEmpty()) {
             val r = vm.results
             if (r != null && r.results.isEmpty()) wide {
-                EmptyHint("No documents match “${r.query}”. Try different words or fewer filters.")
+                if (vm.scoped) EmptyHint("No documents in your courses match “${r.query}”.", "Search all courses") { vm.changeScope("all") }
+                else EmptyHint("No documents match “${r.query}”. Try different words or fewer filters.")
             }
             items(r?.results.orEmpty(), key = { it.document.id }, span = docSpan) { hit -> Doc(hit.document, hit.score) }
         } else {
             if (vm.items.isEmpty()) wide {
-                EmptyHint(if (vm.filters.isEmpty) "Nothing here yet." else "No documents match these filters.")
+                when {
+                    vm.scoped -> EmptyHint(
+                        if (vm.filters.isEmpty) "Nothing in your courses yet." else "Nothing in your courses matches these filters.",
+                        "Browse all courses",
+                    ) { vm.changeScope("all") }
+                    vm.filters.isEmpty -> EmptyHint("Nothing here yet.")
+                    else -> EmptyHint("No documents match these filters.")
+                }
             }
             items(vm.items, key = { it.id }, span = docSpan) { doc -> Doc(doc, null) }
             if (vm.loadingMore) wide {
@@ -551,6 +580,7 @@ private fun ListHeading(vm: LibraryViewModel, hierarchy: Hierarchy?) {
                 when {
                     vm.query.isNotEmpty() -> "Search results"
                     course != null -> course.name
+                    vm.scoped -> "Your documents"
                     else -> "All documents"
                 },
                 style = MaterialTheme.typography.titleLarge,
@@ -561,15 +591,27 @@ private fun ListHeading(vm: LibraryViewModel, hierarchy: Hierarchy?) {
         }
         val subtitle = if (vm.query.isNotEmpty()) {
             r?.let {
-                plural(it.results.size, "result") + " for “${it.query}”" +
+                plural(it.results.size, "result") + " for “${it.query}”" + (if (vm.scoped) " in your courses" else "") +
                     if (it.matchedTerms.isNotEmpty()) " · matched ${it.matchedTerms.joinToString(", ")}" else ""
             }
         } else {
             (course?.let { "${it.code} · Year ${it.yearOfStudy}, semester ${it.semester} · " } ?: "") +
-                plural(vm.total, "document")
+                plural(vm.total, "document") + if (vm.scoped) " in your courses" else ""
         }
         subtitle?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        // Only for people with courses of their own; a course picked by hand is shown whatever the scope.
+        if (hierarchy?.hasOwnCourses == true && vm.filters.courseId == null) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                listOf("mine" to "My courses", "all" to "All courses").forEachIndexed { i, (value, label) ->
+                    SegmentedButton(
+                        selected = vm.scope == value,
+                        onClick = { vm.changeScope(value) },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2),
+                    ) { Text(label) }
+                }
+            }
         }
         if (vm.query.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -583,11 +625,11 @@ private fun ListHeading(vm: LibraryViewModel, hierarchy: Hierarchy?) {
 }
 
 @Composable
-private fun EmptyHint(text: String) {
-    Text(
-        text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(vertical = 32.dp),
-    )
+private fun EmptyHint(text: String, actionLabel: String? = null, onAction: () -> Unit = {}) {
+    Column(Modifier.padding(vertical = 32.dp)) {
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (actionLabel != null) TextButton(onClick = onAction) { Text(actionLabel) }
+    }
 }
 
 @Composable
@@ -618,9 +660,9 @@ private fun ContinueReading(items: List<ReadingItem>, onView: (Int, String) -> U
 }
 
 @Composable
-private fun CourseStrip(courses: List<CourseNode>, onPick: (Int) -> Unit) {
+private fun CourseStrip(courses: List<CourseNode>, title: String, onPick: (Int) -> Unit) {
     Column {
-        Text("Browse by course", style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(courses, key = { it.id }) { c ->
@@ -655,7 +697,9 @@ private fun FilterRow(h: Hierarchy, f: Filters, onChange: (Filters) -> Unit) {
                 onChange(f.copy(programmeId = it, courseId = null))
             }
         }
-        ChipMenu("Course", f.courseId, courses.map { it.id to "${it.code} · ${it.name}" }) { onChange(f.copy(courseId = it)) }
+        ChipMenu("Course", f.courseId, h.mineFirst(courses).map {
+            it.id to "${it.code} · ${it.name}" + if (h.isMine(it.id)) " (yours)" else ""
+        }) { onChange(f.copy(courseId = it)) }
         ChipMenu("Type", f.documentTypeId, h.documentTypes.map { it.id to it.name }) { onChange(f.copy(documentTypeId = it)) }
         ChipMenu("Source", f.official, listOf(true to "Official", false to "Community")) { onChange(f.copy(official = it)) }
         ChipMenu("Year", f.yearOfStudy, (1..4).map { it to "Year $it" }) { onChange(f.copy(yearOfStudy = it)) }
