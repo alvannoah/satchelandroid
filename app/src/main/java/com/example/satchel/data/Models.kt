@@ -52,6 +52,18 @@ data class TokenResponse(val accessToken: String, val expiresIn: Int, val user: 
 @Serializable
 data class Provider(val id: String, val name: String)
 
+/** The institution running Satchel: public, shown before signing in (GET /institution). */
+@Serializable
+data class Institution(
+    val setupNeeded: Boolean = false,
+    val name: String? = null,
+    val shortName: String? = null,
+    val logoUrl: String? = null,              // relative to the API, e.g. /institution/logo?v=...
+    val currentAcademicYear: String? = null,  // the default for uploads
+    val openRegistration: Boolean = true,
+    val emailDomains: List<String> = emptyList(),
+)
+
 @Serializable
 data class DocumentType(val id: Int, val name: String)
 

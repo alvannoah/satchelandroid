@@ -1,6 +1,11 @@
 package com.example.satchel.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import com.example.satchel.data.Institution
+import com.example.satchel.InstitutionCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,16 +54,30 @@ import com.example.satchel.ui.Notice
 import com.example.satchel.ui.screenViewModel
 import kotlinx.coroutines.launch
 
-class LoginViewModel(private val session: Session, private val api: ApiClient) : ViewModel() {
+class LoginViewModel(
+    private val session: Session,
+    private val api: ApiClient,
+    private val institutions: InstitutionCache,
+) : ViewModel() {
     var busy by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
     var providers by mutableStateOf<List<Provider>>(emptyList())
         private set
 
+    /** Name, logo and sign-up rules; null from servers without them, and the screen shows Satchel's defaults. */
+    var institution by mutableStateOf<Institution?>(null)
+        private set
+    var logo by mutableStateOf<ImageBitmap?>(null)
+        private set
+
     init {
         viewModelScope.launch {
             providers = runCatching { api.providers() }.getOrDefault(emptyList())   // the buttons are optional
+        }
+        viewModelScope.launch {
+            institution = institutions.get()
+            logo = institutions.logo()
         }
     }
 
@@ -89,7 +108,7 @@ class LoginViewModel(private val session: Session, private val api: ApiClient) :
 
 @Composable
 fun LoginScreen(message: String?, onOpenBrowser: (String) -> Unit) {
-    val vm = screenViewModel { LoginViewModel(it.session, it.api) }
+    val vm = screenViewModel { LoginViewModel(it.session, it.api, it.institution) }
     var register by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
@@ -109,15 +128,30 @@ fun LoginScreen(message: String?, onOpenBrowser: (String) -> Unit) {
     ) {
         Column(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
             Spacer(Modifier.height(32.dp))
-            Text("Satchel", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary)
+            val inst = vm.institution
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                vm.logo?.let {
+                    Image(it, contentDescription = "${inst?.name ?: "Institution"} logo",
+                        modifier = Modifier.size(56.dp).padding(end = 12.dp))
+                }
+                Text(inst?.name ?: "Satchel",
+                    style = if (inst?.name != null) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            }
             Text("Lecture notes, slides and past papers for your courses, with related material and practice quizzes.",
                 style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(24.dp))
 
-            SecondaryTabRow(selectedTabIndex = if (register) 1 else 0) {
-                Tab(selected = !register, onClick = { register = false; vm.error = null }, text = { Text("Sign in") })
-                Tab(selected = register, onClick = { register = true; vm.error = null }, text = { Text("Create account") })
+            // Students may create accounts unless the institution has closed registration.
+            val canRegister = inst?.openRegistration ?: true
+            if (!canRegister && register) register = false
+            if (canRegister) {
+                SecondaryTabRow(selectedTabIndex = if (register) 1 else 0) {
+                    Tab(selected = !register, onClick = { register = false; vm.error = null }, text = { Text("Sign in") })
+                    Tab(selected = register, onClick = { register = true; vm.error = null }, text = { Text("Create account") })
+                }
+            } else {
+                Text("Sign in", style = MaterialTheme.typography.titleLarge)
             }
             Spacer(Modifier.height(16.dp))
 
@@ -134,9 +168,13 @@ fun LoginScreen(message: String?, onOpenBrowser: (String) -> Unit) {
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     )
                 }
+                val domains = inst?.emailDomains.orEmpty()
                 OutlinedTextField(
                     value = email, onValueChange = { email = it }, label = { Text("Email") },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    supportingText = if (register && domains.isNotEmpty()) ({
+                        Text("Use your ${domains.joinToString(" or ") { "@$it" }} email address")
+                    }) else null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 )
                 OutlinedTextField(
@@ -154,6 +192,12 @@ fun LoginScreen(message: String?, onOpenBrowser: (String) -> Unit) {
                     if (vm.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     else Text(if (register) "Create account" else "Sign in")
                 }
+            }
+
+            if (!canRegister) {
+                Spacer(Modifier.height(12.dp))
+                Text("No account yet? Ask an administrator to add you.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (vm.providers.isNotEmpty()) {

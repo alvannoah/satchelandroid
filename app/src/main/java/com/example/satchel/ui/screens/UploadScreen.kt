@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.satchel.HierarchyCache
+import com.example.satchel.InstitutionCache
 import com.example.satchel.data.ApiClient
 import com.example.satchel.data.ApiException
 import com.example.satchel.data.Hierarchy
@@ -74,7 +75,15 @@ private val ACCEPTED_TYPES = arrayOf(
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 )
 
-class UploadViewModel(private val api: ApiClient, private val cache: HierarchyCache) : ViewModel() {
+class UploadViewModel(
+    private val api: ApiClient,
+    private val cache: HierarchyCache,
+    private val institutions: InstitutionCache,
+) : ViewModel() {
+    /** The institution's current academic year, which the server uses when the field is left empty. */
+    var defaultYear by mutableStateOf<String?>(null)
+        private set
+
     var hierarchy by mutableStateOf<Hierarchy?>(null)
         private set
     var loadError by mutableStateOf<String?>(null)
@@ -99,6 +108,7 @@ class UploadViewModel(private val api: ApiClient, private val cache: HierarchyCa
 
     init {
         loadHierarchy()
+        viewModelScope.launch { defaultYear = institutions.get()?.currentAcademicYear }
     }
 
     fun loadHierarchy() {
@@ -162,7 +172,7 @@ class UploadViewModel(private val api: ApiClient, private val cache: HierarchyCa
 
 @Composable
 fun UploadScreen(isStudent: Boolean, onOpenDocument: (Int) -> Unit, onUploaded: () -> Unit) {
-    val vm = screenViewModel { UploadViewModel(it.api, it.hierarchy) }
+    val vm = screenViewModel { UploadViewModel(it.api, it.hierarchy, it.institution) }
     vm.onUploaded = onUploaded
     val resolver = LocalContext.current.contentResolver
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -225,7 +235,8 @@ fun UploadScreen(isStudent: Boolean, onOpenDocument: (Int) -> Unit, onUploaded: 
             Picker("Document type", vm.typeId, h.documentTypes.map { it.id to it.name }) { vm.typeId = it }
             OutlinedTextField(
                 value = vm.academicYear, onValueChange = { vm.academicYear = it.take(9) },
-                label = { Text("Academic year (optional)") }, placeholder = { Text("2025/2026") },
+                label = { Text("Academic year (optional)") }, placeholder = { Text(vm.defaultYear ?: "2025/2026") },
+                supportingText = vm.defaultYear?.let { y -> { Text("Leave empty for $y, the current academic year") } },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )

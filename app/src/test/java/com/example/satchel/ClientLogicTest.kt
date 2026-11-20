@@ -5,6 +5,7 @@ import com.example.satchel.data.DocumentDetail
 import com.example.satchel.data.DocumentPage
 import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
+import com.example.satchel.data.Institution
 import com.example.satchel.data.MyCourses
 import com.example.satchel.data.Pkce
 import com.example.satchel.data.TokenResponse
@@ -74,6 +75,23 @@ class DecodingTest {
         assertEquals("Lecture notes", d.document.documentType.name)
         assertEquals(0.42, d.related.single().score, 1e-9)
         assertNull(d.document.reviewNote)
+    }
+
+    @Test
+    fun institution() {
+        val inst = json.decodeFromString<Institution>("""
+            {"setup_needed": false, "name": "ISBAT University", "short_name": "ISBAT",
+             "logo_url": "/institution/logo?v=1795000000", "current_academic_year": "2025/2026",
+             "open_registration": false, "email_domains": ["isbat.ac.ug"]}
+        """)
+        assertEquals("ISBAT University", inst.name)
+        assertFalse(inst.openRegistration)
+        assertEquals(listOf("isbat.ac.ug"), inst.emailDomains)
+        // The logo lives under the API's own path, which is /api when deployed.
+        val deployed = ApiClient("https://satchel-alvan.me/api", token = { null }, onUnauthorized = {})
+        assertEquals("https://satchel-alvan.me/api/institution/logo?v=1795000000", deployed.apiUrl(inst.logoUrl!!).toString())
+        val local = ApiClient("http://localhost:8000", token = { null }, onUnauthorized = {})
+        assertEquals("http://localhost:8000/institution/logo", local.apiUrl("/institution/logo").toString())
     }
 
     @Test

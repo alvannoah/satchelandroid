@@ -2,6 +2,12 @@ package com.example.satchel
 
 import android.app.Application
 import android.content.Context
+import kotlinx.coroutines.withContext
+import com.example.satchel.data.Institution
+import com.example.satchel.data.ApiException
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import android.graphics.BitmapFactory
 import com.example.satchel.data.ApiClient
 import com.example.satchel.data.AuthState
 import com.example.satchel.data.DocumentFiles
@@ -24,6 +30,7 @@ class AppContainer(context: Context) {
     val api = ApiClient(BuildConfig.API_URL, token = { session.token }, onUnauthorized = session::expired)
     val hierarchy = HierarchyCache(api)
     val prefs = Prefs(context)
+    val institution = InstitutionCache(api)
 
     /** Bumped when the student's courses change, so lists that depend on them reload. */
     val coursesChanged = MutableStateFlow(0)
@@ -45,6 +52,36 @@ class Prefs(context: Context) {
     var libraryLayout: String?
         get() = prefs.getString("library.layout", null)
         set(value) = prefs.edit().putString("library.layout", value).apply()
+}
+
+/** The institution's name, rules and logo, fetched once; null from servers that have none. */
+class InstitutionCache(private val api: ApiClient) {
+    private val lock = Mutex()
+    private var loaded = false
+    private var value: Institution? = null
+    private var logo: ImageBitmap? = null
+
+    suspend fun get(): Institution? = lock.withLock {
+        if (!loaded) {
+            value = try {
+                api.institution()
+            } catch (e: ApiException) {
+                if (e.status == 0) return@withLock null   // offline: try again next time
+                null                                        // an older server without it
+            }
+            loaded = true
+        }
+        value
+    }
+
+    suspend fun logo(): ImageBitmap? {
+        logo?.let { return it }
+        val url = get()?.logoUrl ?: return null
+        return runCatching {
+            val bytes = api.image(url)
+            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        }.getOrNull()?.also { logo = it }
+    }
 }
 
 /** The course hierarchy changes rarely; fetch it once and reuse it across screens. */

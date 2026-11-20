@@ -85,6 +85,17 @@ class ApiClient(
 
     suspend fun providers(): List<Provider> = get(url("auth/providers"))
 
+    /** Public; older servers answer 404. */
+    suspend fun institution(): Institution = get(url("institution"))
+
+    /** A public image the API names with a relative address, such as the institution's logo. */
+    suspend fun image(relative: String): ByteArray {
+        val response = execute(Request.Builder().url(apiUrl(relative)).build())
+        return withContext(Dispatchers.IO) {
+            response.use { if (it.isSuccessful) it.body.bytes() else throw errorFor(it) }
+        }
+    }
+
     /** Swaps the one-time code from satchel://auth/callback for a login token. */
     suspend fun appToken(code: String, verifier: String): TokenResponse =
         post("auth/app/token", buildJsonObject { put("code", code); put("code_verifier", verifier) })
@@ -199,6 +210,11 @@ class ApiClient(
     }
 
     // ------------------------------ plumbing ------------------------------ //
+
+    /** An address the API gives relative to itself ("/institution/logo?v=3"), under the API's own path. */
+    internal fun apiUrl(relative: String): HttpUrl =
+        base.newBuilder().addPathSegments(relative.substringBefore('?').trimStart('/'))
+            .encodedQuery(relative.substringAfter('?', "").ifEmpty { null }).build()
 
     private fun url(path: String, vararg query: Pair<String, String>): HttpUrl =
         base.newBuilder().addPathSegments(path).apply {
