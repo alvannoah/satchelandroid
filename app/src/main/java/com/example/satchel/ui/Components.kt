@@ -46,7 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.satchel.AppContainer
 import com.example.satchel.container
 import com.example.satchel.data.Document
-import com.example.satchel.data.Progress
+import com.example.satchel.data.ReadingMark
 import com.example.satchel.data.Status
 import com.example.satchel.ui.theme.Satchel
 
@@ -121,7 +121,7 @@ fun DocumentRow(
     showStatus: Boolean = false,
     selected: Boolean? = null,
     onLongClick: (() -> Unit)? = null,
-    progress: Progress? = null,
+    reading: ReadingMark? = null,
 ) {
     val shape = RoundedCornerShape(12.dp)
     Row(
@@ -149,7 +149,7 @@ fun DocumentRow(
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showStatus) StatusBadge(doc.status) else OfficialBadge(doc.official)
-                if (progress != null) ProgressBadge(progress)
+                if (reading != null) ProgressBadge(reading)
                 if (score != null) {
                     Text(
                         "${percent(score)} $scoreLabel",
@@ -199,7 +199,7 @@ fun Modifier.selectionBorder(selected: Boolean?, shape: Shape): Modifier =
 
 /** How far you have read: "38% read", or "✓ Read" once finished. Nothing before you start. */
 @Composable
-fun ProgressBadge(p: Progress) {
+fun ProgressBadge(p: ReadingMark) {
     if (p.completed) Pill("✓ Read", Satchel.colors.ok, Satchel.colors.okBg)
     else Pill("${p.percent}% read", MaterialTheme.colorScheme.onPrimaryContainer, MaterialTheme.colorScheme.primaryContainer)
 }

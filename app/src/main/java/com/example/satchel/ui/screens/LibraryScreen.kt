@@ -214,6 +214,13 @@ class LibraryViewModel(
     var method by mutableStateOf("tfidf")    // "tfidf" (the engine) or "keyword" (the baseline)
         private set
 
+    /**
+     * Whether this server's lists carry reading marks and accept the Reading filter.
+     * Servers that do also say which scope they used; older ones say nothing.
+     */
+    var listsCarryReading by mutableStateOf(false)
+        private set
+
     /** "mine": the student's own courses (the API's default, as on the web); "all": every course. */
     var scope by mutableStateOf("mine")
         private set
@@ -282,10 +289,12 @@ class LibraryViewModel(
                     val r = api.search(query, filters, method, scope = scope)
                     if (mine != generation) return@launch
                     results = r
+                    listsCarryReading = r.scope != null
                 } else {
                     val p = api.documents(filters, 1, PAGE_SIZE, scope)
                     if (mine != generation) return@launch
                     items = p.items
+                    listsCarryReading = p.scope != null
                     total = p.total
                     page = 1
                 }
@@ -447,7 +456,7 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) 
                 LinearProgressIndicator(progress = { b.done / b.total.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             }
         }
-        if (hierarchy != null) FilterRow(hierarchy, vm.filters, vm::updateFilters)
+        if (hierarchy != null) FilterRow(hierarchy, vm.filters, vm.listsCarryReading, vm::updateFilters)
 
         PullToRefreshBox(isRefreshing = vm.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
             when {
@@ -507,11 +516,12 @@ private fun DocumentGrid(
         val selected = if (vm.selecting) doc.id in vm.selection else null
         val click = { if (vm.selecting) vm.toggle(doc) else onOpenDocument(doc.id) }
         val longClick = { vm.toggle(doc) }
-        val read = vm.progress[doc.id]
+        // Fresh from /reading if you have just been reading it, else as the list says.
+        val read = vm.progress[doc.id]?.toMark() ?: doc.reading
         when (layout) {
-            DocLayout.Cards -> DocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
-            DocLayout.Compact -> CompactDocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
-            DocLayout.Grid -> DocumentTile(doc, click, score = score, selected = selected, onLongClick = longClick, progress = read)
+            DocLayout.Cards -> DocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, reading = read)
+            DocLayout.Compact -> CompactDocumentRow(doc, click, score = score, selected = selected, onLongClick = longClick, reading = read)
+            DocLayout.Grid -> DocumentTile(doc, click, score = score, selected = selected, onLongClick = longClick, reading = read)
         }
     }
 
@@ -685,7 +695,7 @@ private fun CourseStrip(courses: List<CourseNode>, title: String, onPick: (Int) 
 
 /** Filters as chips; a chip is highlighted while it narrows the results. */
 @Composable
-private fun FilterRow(h: Hierarchy, f: Filters, onChange: (Filters) -> Unit) {
+private fun FilterRow(h: Hierarchy, f: Filters, readingFilter: Boolean, onChange: (Filters) -> Unit) {
     val courses = h.programmes.filter { f.programmeId == null || it.id == f.programmeId }.flatMap { it.courses }
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -702,6 +712,12 @@ private fun FilterRow(h: Hierarchy, f: Filters, onChange: (Filters) -> Unit) {
         }) { onChange(f.copy(courseId = it)) }
         ChipMenu("Type", f.documentTypeId, h.documentTypes.map { it.id to it.name }) { onChange(f.copy(documentTypeId = it)) }
         ChipMenu("Source", f.official, listOf(true to "Official", false to "Community")) { onChange(f.copy(official = it)) }
+        if (readingFilter || f.reading != null) {
+            ChipMenu("Reading", f.reading,
+                listOf("not_started" to "Not started", "in_progress" to "In progress", "completed" to "Read")) {
+                onChange(f.copy(reading = it))
+            }
+        }
         ChipMenu("Year", f.yearOfStudy, (1..4).map { it to "Year $it" }) { onChange(f.copy(yearOfStudy = it)) }
         ChipMenu("Semester", f.semester, (1..3).map { it to "Semester $it" }) { onChange(f.copy(semester = it)) }
         if (h.academicYears.isNotEmpty()) {

@@ -45,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.satchel.data.Document
-import com.example.satchel.data.Progress
+import com.example.satchel.data.ReadingMark
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.example.satchel.data.Status
@@ -139,7 +139,7 @@ fun CompactDocumentRow(
     score: Double? = null,
     selected: Boolean? = null,
     onLongClick: (() -> Unit)? = null,
-    progress: Progress? = null,
+    reading: ReadingMark? = null,
 ) {
     val kind = FileKind.of(doc.originalFilename)
     val color = kindColor(kind, Satchel.colors)
@@ -163,14 +163,14 @@ fun CompactDocumentRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            if (progress != null) {
-                if (progress.completed) {
+            if (reading != null) {
+                if (reading.completed) {
                     Icon(Icons.Filled.Check, contentDescription = "Read", tint = Satchel.colors.ok,
                         modifier = Modifier.size(18.dp))
                 } else {
-                    Text("${progress.percent}%", style = MaterialTheme.typography.labelMedium,
+                    Text("${reading.percent}%", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.semantics { contentDescription = "${progress.percent}% read" })
+                        modifier = Modifier.semantics { contentDescription = "${reading.percent}% read" })
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -200,7 +200,7 @@ fun DocumentTile(
     showStatus: Boolean = false,
     selected: Boolean? = null,
     onLongClick: (() -> Unit)? = null,
-    progress: Progress? = null,
+    reading: ReadingMark? = null,
 ) {
     val kind = FileKind.of(doc.originalFilename)
     val colors = Satchel.colors
@@ -224,10 +224,10 @@ fun DocumentTile(
             }
             if (selected != null) SelectionMark(selected, Modifier.align(Alignment.TopEnd).padding(6.dp))
             // How far you have read, as a bar along the foot of the page.
-            if (progress != null) {
+            if (reading != null) {
                 Box(
-                    Modifier.align(Alignment.BottomStart).fillMaxWidth(progress.percent.coerceIn(2, 100) / 100f).height(4.dp)
-                        .background(if (progress.completed) colors.ok else MaterialTheme.colorScheme.primary),
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth(reading.percent.coerceIn(2, 100) / 100f).height(4.dp)
+                        .background(if (reading.completed) colors.ok else MaterialTheme.colorScheme.primary),
                 )
             }
         }
@@ -247,7 +247,7 @@ fun DocumentTile(
                     else Text(doc.academicYear ?: formatDate(doc.uploadedAt), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (progress != null) ProgressBadge(progress)
+                if (reading != null) ProgressBadge(reading)
             }
         }
     }

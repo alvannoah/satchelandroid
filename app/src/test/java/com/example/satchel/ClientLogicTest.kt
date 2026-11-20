@@ -2,6 +2,7 @@ package com.example.satchel
 
 import com.example.satchel.data.ApiClient
 import com.example.satchel.data.DocumentDetail
+import com.example.satchel.data.DocumentPage
 import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.MyCourses
@@ -76,6 +77,20 @@ class DecodingTest {
     }
 
     @Test
+    fun readingMarksAndWhetherTheServerHasThem() {
+        // Older servers: no scope, no marks. The app then hides the Reading filter.
+        val old = json.decodeFromString<DocumentPage>("""{"total": 1, "page": 1, "page_size": 25, "items": [$document]}""")
+        assertNull(old.scope)
+        assertNull(old.items.single().reading)
+
+        val withMark = document.replace("\"review_note\": null", "\"review_note\": null, \"reading\": {\"percent\": 38, \"last_page\": 6, \"completed\": false}")
+        val new = json.decodeFromString<DocumentPage>("""{"scope": "all", "total": 1, "page": 1, "page_size": 25, "items": [$withMark]}""")
+        assertEquals("all", new.scope)
+        assertEquals(38, new.items.single().reading?.percent)
+        assertFalse(new.items.single().reading!!.completed)
+    }
+
+    @Test
     fun courseSetupFields() {
         // Older servers send neither field: no setup needed, and a password to change.
         val old = json.decodeFromString<TokenResponse>("""
@@ -139,8 +154,8 @@ class FormatTest {
     @Test
     fun filtersBecomeTheApisQueryParameters() {
         assertEquals(
-            listOf("course_id" to "2", "official" to "false", "academic_year" to "2025/2026"),
-            Filters(courseId = 2, official = false, academicYear = "2025/2026").asQuery(),
+            listOf("course_id" to "2", "official" to "false", "academic_year" to "2025/2026", "reading" to "in_progress"),
+            Filters(courseId = 2, official = false, academicYear = "2025/2026", reading = "in_progress").asQuery(),
         )
         assertTrue(Filters().asQuery().isEmpty())
     }

@@ -305,7 +305,8 @@ private fun DocumentContent(
             Text("No related documents found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(detail.related, key = { "related-${it.document.id}" }) { r ->
-            DocumentRow(r.document, onClick = { onOpenDocument(r.document.id) }, score = r.score, scoreLabel = "similar")
+            DocumentRow(r.document, onClick = { onOpenDocument(r.document.id) }, score = r.score, scoreLabel = "similar",
+                reading = r.document.reading)
         }
     }
 }

@@ -82,7 +82,13 @@ data class Document(
     /** A PDF copy exists for reading on screen (GET /documents/{id}/view). False from servers without it. */
     val viewable: Boolean = false,
     val pageCount: Int? = null,
+    /** Your own reading state, in lists from newer servers; null if not started (or not sent). */
+    val reading: ReadingMark? = null,
 )
+
+/** How far the signed-in person has read a document, as lists carry it. */
+@Serializable
+data class ReadingMark(val percent: Int, val lastPage: Int, val completed: Boolean)
 
 /** How far the signed-in person has read a document. Pages start at 1. */
 @Serializable
@@ -94,7 +100,9 @@ data class Progress(
     val percent: Int,
     val completed: Boolean,
     val updatedAt: String? = null,
-)
+) {
+    fun toMark() = ReadingMark(percent, lastPage, completed)
+}
 
 /** One entry in "continue reading". */
 @Serializable
@@ -143,7 +151,8 @@ data class DocumentPage(
     val page: Int,
     val pageSize: Int,
     val items: List<Document>,
-    val scope: String = "all",   // "mine" if limited to the student's own courses
+    /** "mine" or "all". Absent from servers that predate courses per student and reading filters. */
+    val scope: String? = null,
 )
 
 @Serializable
@@ -155,7 +164,7 @@ data class SearchResults(
     val method: String,
     val matchedTerms: List<String>,
     val results: List<SearchHit>,
-    val scope: String = "all",
+    val scope: String? = null,   // absent from older servers, as on DocumentPage
 )
 
 @Serializable
@@ -235,6 +244,8 @@ data class Filters(
     val documentTypeId: Int? = null,
     val official: Boolean? = null,
     val academicYear: String? = null,
+    /** "not_started", "in_progress" or "completed": your own reading state. */
+    val reading: String? = null,
 ) {
     val isEmpty: Boolean get() = this == Filters()
 
@@ -246,5 +257,6 @@ data class Filters(
         documentTypeId?.let { "document_type_id" to "$it" },
         official?.let { "official" to "$it" },
         academicYear?.let { "academic_year" to it },
+        reading?.let { "reading" to it },
     )
 }

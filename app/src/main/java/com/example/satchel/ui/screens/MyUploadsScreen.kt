@@ -94,7 +94,7 @@ fun MyUploadsScreen(refreshKey: Int, onOpenDocument: (Int) -> Unit) {
                 }
                 items(items, key = { it.id }) { doc ->
                     Column {
-                        DocumentRow(doc, onClick = { onOpenDocument(doc.id) }, showStatus = true)
+                        DocumentRow(doc, onClick = { onOpenDocument(doc.id) }, showStatus = true, reading = doc.reading)
                         if (doc.status == Status.REJECTED && doc.reviewNote != null) {
                             Text("Moderator: “${doc.reviewNote}”", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 12.dp, top = 4.dp))
