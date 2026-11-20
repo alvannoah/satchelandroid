@@ -25,6 +25,9 @@ class AppContainer(context: Context) {
     val hierarchy = HierarchyCache(api)
     val prefs = Prefs(context)
 
+    /** Bumped when the student's courses change, so lists that depend on them reload. */
+    val coursesChanged = MutableStateFlow(0)
+
     val files = DocumentFiles(context, api)
     val reading = ReadingSync(context, api, scope)
 

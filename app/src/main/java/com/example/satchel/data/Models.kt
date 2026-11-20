@@ -18,6 +18,32 @@ data class User(
     val role: String,                 // student, lecturer, moderator or admin
     val isActive: Boolean = true,
     val moderatedCourses: List<CourseRef> = emptyList(),
+    val yearOfStudy: Int? = null,
+    /** A student who has not yet said what they study: show the course setup first. */
+    val needsCourseSetup: Boolean = false,
+    /** False for accounts that only sign in with Google or another provider. */
+    val hasPassword: Boolean = true,
+) {
+    val isStudent: Boolean get() = role == "student"
+}
+
+/** A course as /me/courses returns it. */
+@Serializable
+data class Course(
+    val id: Int,
+    val programmeId: Int,
+    val code: String,
+    val name: String,
+    val yearOfStudy: Int,
+    val semester: Int,
+)
+
+/** A student's own courses: the ones the library shows by default. */
+@Serializable
+data class MyCourses(
+    val chosen: Boolean,          // false: never set up
+    val yearOfStudy: Int? = null,
+    val courses: List<Course>,
 )
 
 @Serializable
@@ -97,6 +123,8 @@ data class Hierarchy(
     val documentTypes: List<DocumentType>,
     val academicYears: List<String>,
     val aiQuizAvailable: Boolean = false,
+    /** Your own courses; null means every course (no choice made, or not a student). */
+    val myCourseIds: List<Int>? = null,
 ) {
     val courses: List<CourseNode> get() = programmes.flatMap { it.courses }
 }

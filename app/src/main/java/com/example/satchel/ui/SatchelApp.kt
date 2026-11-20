@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
@@ -42,6 +43,8 @@ import com.example.satchel.data.AuthState
 import com.example.satchel.data.User
 import com.example.satchel.ui.screens.AccountScreen
 import com.example.satchel.ui.screens.DocumentScreen
+import com.example.satchel.ui.screens.CourseSetupScreen
+import com.example.satchel.ui.screens.MyCoursesScreen
 import com.example.satchel.ui.screens.DownloadsScreen
 import com.example.satchel.ui.screens.LibraryScreen
 import com.example.satchel.ui.screens.LoginScreen
@@ -85,7 +88,18 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
                 container.files.loadDownloads()
                 container.reading.flush()   // pages read offline last time
             }
-            Main(state.user, navigator, onLogOut = { container.session.logOut() })
+            if (state.user.needsCourseSetup) {
+                // Before anything else, a new student says what they study. The screen gets its
+                // own ViewModels, cleared when it closes, so the next person starts afresh.
+                val owner = remember(state.user.id) { Entry(Route.CourseSetup(again = false)) }
+                DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
+                CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+                    CourseSetupScreen(state.user, again = false, onDone = {},   // the refreshed user lets the app in
+                        onCancel = { container.session.logOut() })
+                }
+            } else {
+                Main(state.user, navigator, onLogOut = { container.session.logOut() })
+            }
         }
     }
 }
@@ -112,6 +126,8 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                         when (val r = entry.route) {
                             is Route.Quiz -> "Practice quiz"
                             is Route.Viewer -> r.title
+                            Route.MyCourses -> "My courses"
+                            is Route.CourseSetup -> "Your courses"
                             else -> "Document"
                         },
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -153,7 +169,10 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                         Route.Upload -> UploadScreen(onOpenDocument = open, onUploaded = { uploads++ })
                         Route.MyUploads -> MyUploadsScreen(uploads, onOpenDocument = open)
                         Route.Downloads -> DownloadsScreen(onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
-                        Route.Account -> AccountScreen(user, onLogOut)
+                        Route.Account -> AccountScreen(user, onLogOut, onMyCourses = { navigator.push(Route.MyCourses) })
+                        Route.MyCourses -> MyCoursesScreen(onStartAgain = { navigator.push(Route.CourseSetup(again = true)) })
+                        is Route.CourseSetup -> CourseSetupScreen(user, again = true,
+                            onDone = { navigator.back() }, onCancel = { navigator.back() })
                     }
                 }
             }

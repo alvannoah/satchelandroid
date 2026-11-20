@@ -60,6 +60,9 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
         }
     }
 
+    /** Fetches the user again, e.g. after choosing courses (needsCourseSetup changes). */
+    suspend fun refreshUser() = remember(api.me())
+
     private fun remember(user: User) {
         savedUser = user
         store.put(USER, SatchelJson.encodeToString(User.serializer(), user))

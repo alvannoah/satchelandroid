@@ -25,6 +25,10 @@ sealed interface Route {
     data object MyUploads : Route
     data object Downloads : Route
     data object Account : Route
+    data object MyCourses : Route
+
+    /** Choosing courses: first sign-in ([again] false) or starting over from My courses. */
+    data class CourseSetup(val again: Boolean) : Route
 }
 
 enum class Tab(val label: String, val icon: ImageVector, val root: Route) {

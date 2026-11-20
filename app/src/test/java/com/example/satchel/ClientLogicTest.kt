@@ -4,6 +4,7 @@ import com.example.satchel.data.ApiClient
 import com.example.satchel.data.DocumentDetail
 import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
+import com.example.satchel.data.MyCourses
 import com.example.satchel.data.Pkce
 import com.example.satchel.data.TokenResponse
 import com.example.satchel.ui.FileKind
@@ -72,6 +73,31 @@ class DecodingTest {
         assertEquals("Lecture notes", d.document.documentType.name)
         assertEquals(0.42, d.related.single().score, 1e-9)
         assertNull(d.document.reviewNote)
+    }
+
+    @Test
+    fun courseSetupFields() {
+        // Older servers send neither field: no setup needed, and a password to change.
+        val old = json.decodeFromString<TokenResponse>("""
+            {"access_token": "t", "expires_in": 1, "user": {"id": 1, "email": "e", "full_name": "A B", "role": "student",
+             "is_active": true, "created_at": "2026-11-01T10:00:00", "moderated_courses": []}}
+        """).user
+        assertFalse(old.needsCourseSetup)
+        assertTrue(old.hasPassword)
+
+        val fresh = json.decodeFromString<TokenResponse>("""
+            {"access_token": "t", "expires_in": 1, "user": {"id": 1, "email": "e", "full_name": "A B", "role": "student",
+             "is_active": true, "created_at": "2026-11-01T10:00:00", "moderated_courses": [], "year_of_study": null,
+             "needs_course_setup": true, "has_password": false}}
+        """).user
+        assertTrue(fresh.needsCourseSetup)
+        assertFalse(fresh.hasPassword)
+
+        val mine = json.decodeFromString<MyCourses>("""
+            {"chosen": true, "year_of_study": 1, "courses": [
+              {"id": 2, "programme_id": 1, "code": "DSE-MYSQL", "name": "MySQL", "year_of_study": 1, "semester": 2}]}
+        """)
+        assertEquals(listOf("DSE-MYSQL"), mine.courses.map { it.code })
     }
 
     @Test

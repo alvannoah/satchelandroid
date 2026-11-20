@@ -65,7 +65,7 @@ class AccountViewModel(private val api: ApiClient) : ViewModel() {
 }
 
 @Composable
-fun AccountScreen(user: User, onLogOut: () -> Unit) {
+fun AccountScreen(user: User, onLogOut: () -> Unit, onMyCourses: () -> Unit) {
     val vm = screenViewModel { AccountViewModel(it.api) }
     var changing by rememberSaveable { mutableStateOf(false) }
 
@@ -86,8 +86,14 @@ fun AccountScreen(user: User, onLogOut: () -> Unit) {
             Notice("Moderation and administration are on the Satchel website.")
         }
         if (vm.changed) Notice("Your password has been changed.", kind = "ok")
-        OutlinedButton(onClick = { vm.error = null; changing = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Change password")
+        if (user.isStudent) {
+            OutlinedButton(onClick = onMyCourses, modifier = Modifier.fillMaxWidth()) { Text("My courses") }
+        }
+        // Accounts that only sign in with Google have no Satchel password to change.
+        if (user.hasPassword) {
+            OutlinedButton(onClick = { vm.error = null; changing = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Change password")
+            }
         }
         Button(onClick = onLogOut, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
         Text("Server: ${BuildConfig.API_URL}", style = MaterialTheme.typography.bodySmall,

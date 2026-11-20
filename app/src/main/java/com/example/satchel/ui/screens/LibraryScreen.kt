@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import com.example.satchel.container
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.ui.LayoutIcons
 import com.example.satchel.ui.SelectionBar
@@ -367,6 +368,17 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) 
     }
     LaunchedEffect(nearEnd, vm.items.size) { if (nearEnd) vm.loadMore() }
 
+    val context = LocalContext.current
+    // The student's courses changed (My courses): the lists depend on them.
+    val coursesChanged by context.container.coursesChanged.collectAsStateWithLifecycle()
+    var coursesSeen by rememberSaveable { mutableStateOf(coursesChanged) }
+    LaunchedEffect(coursesChanged) {
+        if (coursesChanged != coursesSeen) {
+            coursesSeen = coursesChanged
+            vm.refresh()
+        }
+    }
+
     // Back from reading: the "continue reading" strip may have changed.
     var shownBefore by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -377,7 +389,6 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) 
     // Back leaves selection mode before it leaves the screen.
     BackHandler(enabled = vm.selecting) { vm.clearSelection() }
 
-    val context = LocalContext.current
     vm.readyToShare?.let { ready ->
         LaunchedEffect(ready) {
             vm.readyToShare = null

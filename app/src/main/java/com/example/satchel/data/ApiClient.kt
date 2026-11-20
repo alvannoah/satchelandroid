@@ -13,7 +13,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
@@ -95,6 +97,23 @@ class ApiClient(
     /** Where a Custom Tab starts signing in with an outside provider. */
     fun ssoStartUrl(providerId: String, challenge: String): String =
         url("auth/oidc/$providerId/start", "app_challenge" to challenge, "next" to "/").toString()
+
+    // ----------------------------- my courses ----------------------------- //
+
+    suspend fun myCourses(): MyCourses = get(url("me/courses"))
+
+    /** First sign-in: every course of these programmes in that year of study (replacing any earlier choice). */
+    suspend fun setUpCourses(programmeIds: Collection<Int>, yearOfStudy: Int): MyCourses =
+        post("me/courses/setup", buildJsonObject {
+            putJsonArray("programme_ids") { programmeIds.forEach { add(it) } }
+            put("year_of_study", yearOfStudy)
+        })
+
+    /** Exactly these courses, for adding or removing single ones. */
+    suspend fun chooseCourses(courseIds: Collection<Int>): MyCourses {
+        val body = buildJsonObject { putJsonArray("course_ids") { courseIds.forEach { add(it) } } }
+        return decode(send(Request.Builder().url(url("me/courses")).put(body.toBody())))
+    }
 
     // ------------------------------ browsing ------------------------------ //
 
