@@ -17,3 +17,4 @@ local.properties
 CLAUDE.md
 keystore.properties
 *.jks
+/.idea/deploymentTargetSelector.xml
