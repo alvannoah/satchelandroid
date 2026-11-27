@@ -26,6 +26,7 @@ sealed interface Route {
     data object Downloads : Route
     data object Account : Route
     data object MyCourses : Route
+    data object Notifications : Route
 
     /** Choosing courses: first sign-in ([again] false) or starting over from My courses. */
     data class CourseSetup(val again: Boolean) : Route

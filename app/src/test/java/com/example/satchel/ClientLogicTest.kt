@@ -6,6 +6,7 @@ import com.example.satchel.data.DocumentPage
 import com.example.satchel.data.Filters
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.Institution
+import com.example.satchel.data.NotificationList
 import com.example.satchel.data.MyCourses
 import com.example.satchel.data.Pkce
 import com.example.satchel.data.TokenResponse
@@ -75,6 +76,21 @@ class DecodingTest {
         assertEquals("Lecture notes", d.document.documentType.name)
         assertEquals(0.42, d.related.single().score, 1e-9)
         assertNull(d.document.reviewNote)
+    }
+
+    @Test
+    fun notificationList() {
+        val list = json.decodeFromString<NotificationList>("""
+            {"unread": 1, "items": [
+              {"id": 9, "kind": "upload_rejected", "title": "Your upload was rejected", "body": "Moderator: duplicate",
+               "document_id": 42, "created_at": "2026-11-27T08:00:00", "read": false},
+              {"id": 8, "kind": "new_document", "title": "New in DSE-MYSQL", "body": null,
+               "document_id": null, "created_at": "2026-11-26T08:00:00", "read": true}]}
+        """)
+        assertEquals(1, list.unread)
+        assertEquals(42, list.items[0].documentId)
+        assertNull(list.items[1].documentId)
+        assertNull(list.items[1].body)
     }
 
     @Test
@@ -190,6 +206,16 @@ class FormatTest {
         assertEquals(FileKind.Pdf, FileKind.of("Notes.PDF"))
         assertEquals(FileKind.Pptx, FileKind.of("slides.pptx"))
         assertEquals(FileKind.Other, FileKind.of("README"))
+    }
+
+    @Test
+    fun timesAgo() {
+        val now = java.time.Instant.parse("2026-11-27T12:00:00Z")
+        assertEquals("just now", com.example.satchel.ui.formatAgo("2026-11-27T11:59:40", now))
+        assertEquals("5 min ago", com.example.satchel.ui.formatAgo("2026-11-27T11:55:00", now))
+        assertEquals("3 h ago", com.example.satchel.ui.formatAgo("2026-11-27T09:00:00", now))
+        assertEquals("yesterday", com.example.satchel.ui.formatAgo("2026-11-26T10:00:00", now))
+        assertEquals("5 min ago", com.example.satchel.ui.formatAgo("2026-11-27T11:55:00+00:00", now))
     }
 
     @Test

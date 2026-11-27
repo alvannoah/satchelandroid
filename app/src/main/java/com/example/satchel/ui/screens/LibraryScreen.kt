@@ -378,7 +378,7 @@ class LibraryViewModel(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) {
+fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit, bell: @Composable () -> Unit = {}) {
     val vm = screenViewModel { LibraryViewModel(it.api, it.hierarchy, it.prefs, it.files) }
     val focus = LocalFocusManager.current
     val listState = rememberLazyGridState()
@@ -432,7 +432,8 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) 
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        if (vm.selecting) LibrarySelectionBar(vm) else OutlinedTextField(
+        if (vm.selecting) LibrarySelectionBar(vm) else Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
             value = vm.queryText,
             onValueChange = { vm.queryText = it },
             placeholder = { Text("Search the library") },
@@ -448,8 +449,11 @@ fun LibraryScreen(onOpenDocument: (Int) -> Unit, onView: (Int, String) -> Unit) 
             shape = RoundedCornerShape(28.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { vm.search(); focus.clearFocus() }),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.weight(1f).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         )
+        bell()
+        Spacer(Modifier.width(8.dp))
+        }
         vm.bulk?.let { b ->
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Text("${b.verb} ${(b.done + 1).coerceAtMost(b.total)} of ${b.total}…", style = MaterialTheme.typography.bodySmall)

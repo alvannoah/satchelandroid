@@ -272,3 +272,23 @@ data class Filters(
         reading?.let { "reading" to it },
     )
 }
+
+// ----------------------------- notifications ------------------------------ //
+
+/** One in-app notification (GET /notifications). */
+@Serializable
+data class AppNotification(
+    val id: Int,
+    val kind: String,            // new_document, upload_waiting, upload_approved, upload_rejected
+    val title: String,
+    val body: String? = null,
+    val documentId: Int? = null,
+    val createdAt: String,
+    val read: Boolean,
+)
+
+@Serializable
+data class NotificationList(val unread: Int, val items: List<AppNotification>)
+
+@Serializable
+data class UnreadCount(val unread: Int)

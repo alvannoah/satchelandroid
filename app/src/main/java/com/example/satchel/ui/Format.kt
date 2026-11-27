@@ -59,3 +59,21 @@ fun lineWidths(seed: Int, count: Int): List<Float> {
         (55 + x % 45) / 100f
     }
 }
+
+/**
+ * How long ago a server time (UTC, as the API stores it) was: "just now", "5 min ago",
+ * "3 h ago", "yesterday", then a date.
+ */
+fun formatAgo(iso: String, now: java.time.Instant = java.time.Instant.now()): String {
+    val then = runCatching { OffsetDateTime.parse(iso).toInstant() }
+        .recoverCatching { LocalDateTime.parse(iso).toInstant(java.time.ZoneOffset.UTC) }
+        .getOrNull() ?: return iso.take(10)
+    val minutes = java.time.Duration.between(then, now).toMinutes()
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        minutes < 24 * 60 -> "${minutes / 60} h ago"
+        minutes < 48 * 60 -> "yesterday"
+        else -> then.atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(dateFormat)
+    }
+}

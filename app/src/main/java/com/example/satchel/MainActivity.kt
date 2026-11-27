@@ -49,7 +49,10 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         intent.getStringExtra(Push.EXTRA_NOTIFICATION_ID)?.toIntOrNull()?.let { id ->
             val c = container
-            if (c.session.token != null) c.scope.launch { runCatching { c.api.markNotificationRead(id) } }
+            if (c.session.token != null) c.scope.launch {
+                runCatching { c.api.markNotificationRead(id) }
+                c.inbox.refresh()
+            }
         }
         // An upload waiting for review also opens its document: moderation itself is on the web.
         intent.getStringExtra(Push.EXTRA_DOCUMENT_ID)?.toIntOrNull()?.let { navigator.pendingDocument = it }

@@ -49,6 +49,7 @@ import com.example.satchel.ui.screens.AccountScreen
 import com.example.satchel.ui.screens.DocumentScreen
 import com.example.satchel.ui.screens.CourseSetupScreen
 import com.example.satchel.ui.screens.MyCoursesScreen
+import com.example.satchel.ui.screens.NotificationsScreen
 import com.example.satchel.ui.screens.DownloadsScreen
 import com.example.satchel.ui.screens.LibraryScreen
 import com.example.satchel.ui.screens.LoginScreen
@@ -84,6 +85,7 @@ fun SatchelApp(navigator: Navigator, onOpenBrowser: (String) -> Unit) {
                 container.hierarchy.clear()
                 container.files.clearCache()
                 container.files.forgetDownloads()
+                container.inbox.clear()
             }
             LoginScreen(state.message) { providerId -> onOpenBrowser(container.session.startSso(providerId)) }
         }
@@ -142,6 +144,7 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                             is Route.Quiz -> "Practice quiz"
                             is Route.Viewer -> r.title
                             Route.MyCourses -> "My courses"
+                            Route.Notifications -> "Notifications"
                             is Route.CourseSetup -> "Your courses"
                             else -> "Document"
                         },
@@ -175,7 +178,9 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                     val open = { id: Int -> navigator.push(Route.Document(id)) }
                     when (val route = entry.route) {
                         Route.Library -> LibraryScreen(onOpenDocument = open,
-                            onView = { id, title -> navigator.push(Route.Viewer(id, title)) })
+                            onView = { id, title -> navigator.push(Route.Viewer(id, title)) },
+                            bell = { Bell(onClick = { navigator.push(Route.Notifications) }) })
+                        Route.Notifications -> NotificationsScreen(onOpenDocument = open)
                         is Route.Document -> DocumentScreen(route.id, onOpenDocument = open,
                             onOpenQuiz = { navigator.push(Route.Quiz(it)) },
                             onView = { id, title -> navigator.push(Route.Viewer(id, title)) })

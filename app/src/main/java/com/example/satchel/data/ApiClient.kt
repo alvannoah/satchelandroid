@@ -128,6 +128,15 @@ class ApiClient(
         withContext(Dispatchers.IO) { execute(request).close() }
     }
 
+    suspend fun notifications(limit: Int = 50): NotificationList = get(url("notifications", "limit" to "$limit"))
+
+    /** For the bell's badge; cheap enough to ask every minute. Older servers answer 404. */
+    suspend fun unreadCount(): Int = get<UnreadCount>(url("notifications/unread-count")).unread
+
+    suspend fun markAllNotificationsRead() {
+        send(Request.Builder().url(url("notifications/read-all")).post(ByteArray(0).toRequestBody(null)))
+    }
+
     suspend fun markNotificationRead(id: Int) {
         send(Request.Builder().url(url("notifications/$id/read")).post(ByteArray(0).toRequestBody(null)))
     }

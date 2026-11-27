@@ -16,6 +16,7 @@ class SatchelMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        applicationContext.container.inbox.refresh()   // the bell's count
         val title = message.notification?.title ?: message.data["title"] ?: return
         val body = message.notification?.body ?: message.data["body"]
         val documentId = message.data[Push.EXTRA_DOCUMENT_ID]?.toIntOrNull()

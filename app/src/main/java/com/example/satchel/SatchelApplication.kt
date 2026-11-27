@@ -13,6 +13,7 @@ import com.example.satchel.data.AuthState
 import com.example.satchel.data.DocumentFiles
 import com.example.satchel.data.ReadingSync
 import com.example.satchel.data.Push
+import com.example.satchel.data.Inbox
 import com.example.satchel.data.Hierarchy
 import com.example.satchel.data.SecureStore
 import com.example.satchel.data.Session
@@ -42,6 +43,7 @@ class AppContainer(context: Context) {
     val files = DocumentFiles(context, api)
     val reading = ReadingSync(context, api, scope)
     val push = Push(context)
+    val inbox = Inbox(api, scope)
 
     init {
         session.api = api
