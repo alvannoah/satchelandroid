@@ -65,6 +65,9 @@ class Navigator : ViewModel() {
         if (target == tab) popToRoot() else tab = target
     }
 
+    /** A document a tapped notification asked for, opened once someone is signed in. */
+    var pendingDocument by mutableStateOf<Int?>(null)
+
     fun push(route: Route) {
         stacks.getValue(tab).add(Entry(route))
     }

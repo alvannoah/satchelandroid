@@ -109,6 +109,29 @@ class ApiClient(
     fun ssoStartUrl(providerId: String, challenge: String): String =
         url("auth/oidc/$providerId/start", "app_challenge" to challenge, "next" to "/").toString()
 
+    // ---------------------------- notifications --------------------------- //
+
+    /** Push notifications for this account go to this phone (any role; a new owner takes it over). */
+    suspend fun registerDevice(pushToken: String) {
+        val body = buildJsonObject { put("token", pushToken); put("platform", "android") }
+        send(Request.Builder().url(url("me/devices")).post(body.toBody()))
+    }
+
+    /**
+     * No more pushes to this phone for the account [bearer] belongs to. Sent while signing
+     * out, so it carries the login being dropped rather than the session's (already gone).
+     */
+    suspend fun unregisterDevice(pushToken: String, bearer: String) {
+        val body = buildJsonObject { put("token", pushToken) }
+        val request = Request.Builder().url(url("me/devices/unregister")).post(body.toBody())
+            .header("Authorization", "Bearer $bearer").build()
+        withContext(Dispatchers.IO) { execute(request).close() }
+    }
+
+    suspend fun markNotificationRead(id: Int) {
+        send(Request.Builder().url(url("notifications/$id/read")).post(ByteArray(0).toRequestBody(null)))
+    }
+
     // ----------------------------- my courses ----------------------------- //
 
     suspend fun myCourses(): MyCourses = get(url("me/courses"))

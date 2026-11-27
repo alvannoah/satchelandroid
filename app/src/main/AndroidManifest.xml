@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13 and later ask the person before an app may show notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Lets the app find a browser for sign-in and apps that open PDF, Word and PowerPoint files. -->
     <queries>
@@ -50,6 +52,25 @@
                 <data android:scheme="satchel" android:host="auth" android:path="/callback" />
             </intent-filter>
         </activity>
+
+        <!-- Push messages from Firebase Cloud Messaging (project satchel-367a6). -->
+        <service
+            android:name=".SatchelMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Used when Android shows a message itself (the app in the background). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/satchel_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/notification_channel_id" />
 
         <!-- Hands downloaded documents to other apps to open. -->
         <provider

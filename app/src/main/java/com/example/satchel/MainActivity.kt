@@ -11,6 +11,8 @@ import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.core.net.toUri
+import com.example.satchel.data.Push
+import kotlinx.coroutines.launch
 import com.example.satchel.ui.Navigator
 import com.example.satchel.ui.SatchelApp
 import com.example.satchel.ui.theme.SatchelTheme
@@ -21,7 +23,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) handleSignInReturn(intent)
+        if (savedInstanceState == null) {
+            handleSignInReturn(intent)
+            handleNotificationTap(intent)
+        }
         setContent {
             SatchelTheme {
                 // The Surface sets the background and the default text colour for every screen.
@@ -36,6 +41,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleSignInReturn(intent)
+        handleNotificationTap(intent)
+    }
+
+    /** A tapped notification carries the document it is about (see Push.EXTRA_DOCUMENT_ID). */
+    private fun handleNotificationTap(intent: Intent?) {
+        intent ?: return
+        intent.getStringExtra(Push.EXTRA_NOTIFICATION_ID)?.toIntOrNull()?.let { id ->
+            val c = container
+            if (c.session.token != null) c.scope.launch { runCatching { c.api.markNotificationRead(id) } }
+        }
+        // An upload waiting for review also opens its document: moderation itself is on the web.
+        intent.getStringExtra(Push.EXTRA_DOCUMENT_ID)?.toIntOrNull()?.let { navigator.pendingDocument = it }
+        intent.removeExtra(Push.EXTRA_NOTIFICATION_ID)   // not again on rotation
+        intent.removeExtra(Push.EXTRA_DOCUMENT_ID)
     }
 
     private fun handleSignInReturn(intent: Intent?) {

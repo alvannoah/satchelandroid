@@ -1,5 +1,9 @@
 package com.example.satchel.ui
 
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.os.Build
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -113,6 +117,17 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
         onDispose { navigator.onDiscard = {} }
     }
     var uploads by rememberSaveable { mutableIntStateOf(0) }   // bumped after each upload
+
+    // Opening a tapped notification's document.
+    LaunchedEffect(navigator.pendingDocument) {
+        val id = navigator.pendingDocument ?: return@LaunchedEffect
+        navigator.pendingDocument = null
+        navigator.select(Tab.Library)
+        navigator.push(Route.Document(id))
+    }
+
+    // Ask once whether notifications may be shown (Android 13 and later).
+    NotificationPermission()
     val entry = navigator.current
     val nested = entry.route !is Route.Library && Tab.entries.none { it.root == entry.route }
 
@@ -176,6 +191,20 @@ private fun Main(user: User, navigator: Navigator, onLogOut: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Asks for the notification permission once, after signing in, on Android 13 and later. */
+@Composable
+private fun NotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val container = LocalContext.current.container
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (!container.push.allowed() && !container.prefs.askedForNotifications) {
+            container.prefs.askedForNotifications = true
+            ask.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

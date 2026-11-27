@@ -106,7 +106,11 @@ class Session(private val store: SecureStore, private val scope: CoroutineScope)
         }
     }
 
+    /** Told the login about to be dropped, e.g. to stop pushes to this phone for that account. */
+    var beforeLogOut: (bearer: String) -> Unit = {}
+
     fun logOut(message: String? = null) {
+        token?.let(beforeLogOut)
         token = null
         savedUser = null
         store.put(TOKEN, null)
