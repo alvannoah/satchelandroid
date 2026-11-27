@@ -18,3 +18,4 @@ CLAUDE.md
 keystore.properties
 *.jks
 /.idea/deploymentTargetSelector.xml
+/docs/screenshots/
